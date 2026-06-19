@@ -42,6 +42,34 @@ export interface VerificationResult {
   latency_ms: number | null;
 }
 
+export interface BatchItemError {
+  code: string;
+  message: string;
+  details: Record<string, unknown>;
+}
+
+export interface BatchItemResult {
+  index: number;
+  result: VerificationResult | null;
+  error: BatchItemError | null;
+}
+
+export interface BatchSummary {
+  passed: number;
+  needs_review: number;
+  total: number;
+}
+
+export interface BatchResult {
+  items: BatchItemResult[];
+  summary: BatchSummary;
+}
+
+export interface BatchVerificationRequestItem {
+  image: File;
+  application_data: ApplicationData;
+}
+
 export interface ApiErrorEnvelope {
   error: {
     code: string;

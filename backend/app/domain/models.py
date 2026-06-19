@@ -69,11 +69,20 @@ class BatchSummary(BaseModel):
     total: int
 
 
+class BatchItemError(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    message: str
+    details: dict[str, object] = Field(default_factory=dict)
+
+
 class BatchItemResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    index: int
     result: VerificationResult | None = None
-    error: str | None = None
+    error: BatchItemError | None = None
 
 
 class BatchResult(BaseModel):

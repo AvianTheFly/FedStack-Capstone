@@ -1,4 +1,10 @@
-import type { ApiErrorEnvelope, ApplicationData, VerificationResult } from "../types/api";
+import type {
+  ApiErrorEnvelope,
+  ApplicationData,
+  BatchResult,
+  BatchVerificationRequestItem,
+  VerificationResult
+} from "../types/api";
 
 export class VerificationApiError extends Error {
   code: string;
@@ -88,4 +94,35 @@ export async function verifyLabel(
   }
 
   return response.json() as Promise<VerificationResult>;
+}
+
+export async function verifyBatch(items: BatchVerificationRequestItem[]): Promise<BatchResult> {
+  const formData = new FormData();
+  for (const item of items) {
+    formData.append("images", item.image);
+    formData.append("application_data", JSON.stringify(item.application_data));
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBaseUrl()}/verify/batch`, {
+      method: "POST",
+      body: formData
+    });
+  } catch (error) {
+    if (error instanceof VerificationApiError) {
+      throw error;
+    }
+
+    throw new VerificationApiError(
+      "Could not reach the verification service. Please check the connection and try again.",
+      "network_error"
+    );
+  }
+
+  if (!response.ok) {
+    throw await readError(response);
+  }
+
+  return response.json() as Promise<BatchResult>;
 }

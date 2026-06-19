@@ -16,6 +16,8 @@ class Settings(BaseSettings):
         default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"]
     )
     max_upload_mb: int = 10
+    max_batch_items: int = 25
+    batch_concurrency_limit: int = 3
     vision_provider: str = "fake"
     vision_model: str = ""
     openai_api_key: str = ""

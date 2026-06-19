@@ -9,9 +9,9 @@ from pydantic import ValidationError
 from app.api.dependencies import get_vision_service
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.domain.comparison import compare_label
 from app.domain.models import ApplicationData, VerificationResult
-from app.services.image_preprocess import ImagePreprocessError, preprocess_image
+from app.services.image_preprocess import ImagePreprocessError
+from app.services.verification import elapsed_ms, verify_label_image
 from app.services.vision import VisionService, VisionServiceError
 
 logger = logging.getLogger(__name__)
@@ -29,15 +29,14 @@ async def verify_label(
         application = _parse_application_data(application_data)
         image_bytes = await _read_image_upload(image)
         settings = get_settings()
-        preprocessed = preprocess_image(
-            image_bytes,
-            image.content_type or "",
+        result = await verify_label_image(
+            application=application,
+            image_bytes=image_bytes,
+            content_type=image.content_type or "",
             filename=image.filename,
-            max_upload_mb=settings.max_upload_mb,
+            vision_service=vision_service,
+            settings=settings,
         )
-        extracted = await vision_service.extract_label(preprocessed)
-        result = compare_label(application, extracted)
-        result.latency_ms = _elapsed_ms(start)
         logger.info(
             "verify_request_completed latency_ms=%s overall_verdict=%s",
             result.latency_ms,
@@ -49,7 +48,7 @@ async def verify_label(
         )
         return result
     except ImagePreprocessError as exc:
-        latency_ms = _elapsed_ms(start)
+        latency_ms = elapsed_ms(start)
         api_error = _image_preprocess_api_error(exc)
         logger.warning(
             "verify_request_failed latency_ms=%s error_code=%s",
@@ -59,7 +58,7 @@ async def verify_label(
         )
         raise api_error from exc
     except VisionServiceError as exc:
-        latency_ms = _elapsed_ms(start)
+        latency_ms = elapsed_ms(start)
         api_error = _vision_api_error(exc)
         logger.warning(
             "verify_request_failed latency_ms=%s error_code=%s vision_category=%s",
@@ -74,7 +73,7 @@ async def verify_label(
         )
         raise api_error from exc
     except ApiError as exc:
-        latency_ms = _elapsed_ms(start)
+        latency_ms = elapsed_ms(start)
         logger.warning(
             "verify_request_failed latency_ms=%s error_code=%s",
             latency_ms,
@@ -206,4 +205,4 @@ def _vision_api_error(exc: VisionServiceError) -> ApiError:
 
 
 def _elapsed_ms(start: float) -> int:
-    return max(0, round((perf_counter() - start) * 1000))
+    return elapsed_ms(start)

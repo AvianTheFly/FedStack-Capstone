@@ -71,17 +71,61 @@ Rules:
 
 Phase: 5.
 
-Request: `multipart/form-data` containing multiple image and application-data pairs. The exact encoding should be finalized in Phase 5 and documented here before implementation.
+Request: `multipart/form-data`
+
+- `images`: repeated label image file parts.
+- `application_data`: repeated JSON string parts containing the canonical fields.
+
+Pairing rule:
+
+- Items are paired by the order of provided multipart parts.
+- The first provided `images` part is verified with the first provided `application_data` part.
+- The second provided `images` part is verified with the second provided `application_data` part, and so on.
+- The frontend should submit only complete rows, with one image and one application-data object for each label.
+- If the counts differ, trailing unpaired parts return item-level errors. For example, a third `application_data` part with only two `images` parts returns an item-level missing-image error for index `2`.
+- Because this simple multipart shape has no explicit item ID, a missing middle item cannot be represented reliably unless a caller sends a placeholder or invalid part at that position. This is acceptable for the MVP because the frontend owns request construction.
+- One missing or bad item does not fail the whole batch.
+- An empty batch or a request that cannot be parsed as the batch envelope returns the normal top-level error envelope from `docs/interfaces/error-contracts.md`.
 
 Success response:
 
 ```json
 {
-  "items": [],
+  "items": [
+    {
+      "index": 0,
+      "result": {
+        "results": [
+          {
+            "field": "brand_name",
+            "match_type": "fuzzy",
+            "expected": "OLD TOM DISTILLERY",
+            "found": "Old Tom Distillery",
+            "status": "PASS",
+            "message": "Values match after normalization."
+          }
+        ],
+        "overall_verdict": "APPROVED",
+        "latency_ms": 1240
+      },
+      "error": null
+    },
+    {
+      "index": 1,
+      "result": null,
+      "error": {
+        "code": "unsupported_file_type",
+        "message": "Please upload a JPG, PNG, or WEBP label image.",
+        "details": {
+          "field": "image"
+        }
+      }
+    }
+  ],
   "summary": {
-    "passed": 0,
-    "needs_review": 0,
-    "total": 0
+    "passed": 1,
+    "needs_review": 1,
+    "total": 2
   }
 }
 ```
@@ -89,5 +133,11 @@ Success response:
 Rules:
 
 - One bad item must not fail the whole batch.
-- Each item must contain either a verification result or a readable per-item error.
-- Concurrency must be bounded.
+- Each item must contain exactly one of:
+  - `result`: a full `VerificationResult`, including per-item `latency_ms`.
+  - `error`: a readable per-item error object.
+- Item-level errors use `{ "code": string, "message": string, "details": object }`. They are not wrapped in the top-level `{ "error": ... }` envelope.
+- `summary.passed` counts items with `overall_verdict` of `APPROVED`.
+- `summary.needs_review` counts `NEEDS_REVIEW` results plus item-level errors.
+- `summary.total` equals `items.length`.
+- Concurrency must be bounded. Batch total latency may exceed 5 seconds for larger batches; bounded concurrency protects provider stability, cost/rate limits, and per-item latency while the frontend progress state makes longer processing obvious.

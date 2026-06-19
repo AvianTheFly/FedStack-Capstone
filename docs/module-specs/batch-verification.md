@@ -16,7 +16,10 @@ Backend batch API/service and frontend batch feature.
 
 Inputs:
 
-- Multiple image and application-data pairs.
+- `multipart/form-data` with repeated `images` file parts.
+- Repeated `application_data` JSON string parts.
+- Items are paired by the order of provided multipart parts: first image with first application-data object, second image with second application-data object, and so on.
+- The frontend should submit only complete rows.
 
 Outputs:
 
@@ -28,6 +31,7 @@ Outputs:
 - `POST /verify/batch`
 - Frontend batch upload view.
 - Batch API client function.
+- Batch item error shape: `{ code, message, details }`, not the top-level API error envelope.
 
 ## 6. Dependencies
 
@@ -47,12 +51,21 @@ Forbidden:
 
 Each item must isolate validation, extraction, and comparison errors. The endpoint-level response should remain successful when at least the batch envelope is valid.
 
+Whole-request errors use `docs/interfaces/error-contracts.md`. Item-level errors use the distinct batch item error object so the frontend can distinguish one failed label from a failed request.
+
+Mismatched counts create item-level errors for trailing unpaired parts. A missing middle item cannot be represented reliably with this simple multipart shape unless a caller sends a placeholder or invalid part at that position. This limitation is acceptable for the MVP because the frontend owns request construction and submits only complete rows.
+
+Empty batches and requests that cannot be parsed as the batch envelope are whole-request errors.
+
+Batch processing uses a bounded async concurrency limit, default `3`. Batch total latency may exceed 5 seconds for larger batches; the limit protects provider stability, cost/rate limits, memory pressure, and per-item latency.
+
 ## 8. Tests Required
 
 - Multiple valid items process together.
 - One bad item does not fail the whole batch.
 - Summary counts are correct.
 - Concurrency limit is enforced or directly testable.
+- Item-level errors do not use the top-level error envelope shape.
 - Frontend shows progress, summary, and drill-down.
 
 ## 9. Exit Criteria
