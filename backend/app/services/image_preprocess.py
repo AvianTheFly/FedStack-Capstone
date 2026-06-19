@@ -97,7 +97,7 @@ def preprocess_image(
             processed = output.getvalue()
     except ImagePreprocessError:
         raise
-    except (OSError, UnidentifiedImageError) as exc:
+    except (Image.DecompressionBombError, OSError, UnidentifiedImageError, ValueError) as exc:
         raise ImagePreprocessError(
             "invalid_image",
             "The uploaded file is not a readable image.",

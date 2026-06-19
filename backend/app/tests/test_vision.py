@@ -66,6 +66,20 @@ def test_preprocess_rejects_invalid_image_bytes() -> None:
     assert exc_info.value.category == "invalid_image"
 
 
+def test_preprocess_rejects_extreme_image_dimensions_gracefully(monkeypatch) -> None:
+    def raise_decompression_bomb(*args: object, **kwargs: object) -> object:
+        _ = (args, kwargs)
+        raise Image.DecompressionBombError("image dimensions are too large")
+
+    monkeypatch.setattr(Image, "open", raise_decompression_bomb)
+
+    with pytest.raises(ImagePreprocessError) as exc_info:
+        preprocess_image(make_image_bytes(), "image/png")
+
+    assert exc_info.value.category == "invalid_image"
+    assert exc_info.value.message == "The uploaded file is not a readable image."
+
+
 def test_preprocess_downscales_and_reencodes_oversized_images() -> None:
     original = make_image_bytes(size=(2400, 1200))
 

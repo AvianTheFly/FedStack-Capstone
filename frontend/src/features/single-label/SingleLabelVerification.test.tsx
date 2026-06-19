@@ -178,6 +178,28 @@ describe("SingleLabelVerification", () => {
     expect(container.textContent).toContain("Please upload a JPG or PNG label image.");
   });
 
+  it("renders unreadable service responses in plain English", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => {
+          throw new Error("not json");
+        }
+      })
+    );
+
+    await renderSingleLabelVerification();
+    await fillRequiredForm();
+    await submitForm();
+    await waitForAsyncUpdates();
+
+    expect(container.textContent).toContain("Could not check this label.");
+    expect(container.textContent).toContain(
+      "The verification service returned an unreadable response. Please try again."
+    );
+  });
+
   it("shows a prominent verdict and failed-field details", async () => {
     vi.stubGlobal(
       "fetch",

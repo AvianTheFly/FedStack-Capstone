@@ -168,7 +168,16 @@ async def _read_item_image(
         )
 
     max_bytes = max_upload_mb * 1024 * 1024
-    image_bytes = await image.read(max_bytes + 1)
+    try:
+        image_bytes = await image.read(max_bytes + 1)
+    except Exception:
+        return BatchVerificationInput(
+            index=index,
+            error=bad_request_item_error(
+                "This label image could not be read. Please choose the image again.",
+                {"index": index, "field": "image"},
+            ),
+        )
     if len(image_bytes) > max_bytes:
         return BatchVerificationInput(
             index=index,

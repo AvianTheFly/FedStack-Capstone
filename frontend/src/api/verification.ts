@@ -64,6 +64,17 @@ async function readError(response: Response): Promise<VerificationApiError> {
   );
 }
 
+async function readSuccess<T>(response: Response): Promise<T> {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new VerificationApiError(
+      "The verification service returned an unreadable response. Please try again.",
+      "bad_response"
+    );
+  }
+}
+
 export async function verifyLabel(
   image: File,
   applicationData: ApplicationData
@@ -93,7 +104,7 @@ export async function verifyLabel(
     throw await readError(response);
   }
 
-  return response.json() as Promise<VerificationResult>;
+  return readSuccess<VerificationResult>(response);
 }
 
 export async function verifyBatch(items: BatchVerificationRequestItem[]): Promise<BatchResult> {
@@ -124,5 +135,5 @@ export async function verifyBatch(items: BatchVerificationRequestItem[]): Promis
     throw await readError(response);
   }
 
-  return response.json() as Promise<BatchResult>;
+  return readSuccess<BatchResult>(response);
 }

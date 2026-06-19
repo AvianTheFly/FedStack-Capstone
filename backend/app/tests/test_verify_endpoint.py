@@ -6,7 +6,9 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.api.dependencies import get_vision_service
+from app.api.verify import _read_image_upload
 from app.core.config import get_settings
+from app.core.errors import ApiError
 from app.domain.comparison import CANONICAL_GOVERNMENT_WARNING
 from app.domain.models import ExtractedLabel
 from app.main import create_app
@@ -286,6 +288,23 @@ def test_oversized_file_returns_clear_4xx_error(monkeypatch) -> None:
     assert response.status_code == 413
     assert_error_envelope(response, "file_too_large")
     get_settings.cache_clear()
+
+
+async def test_unreadable_upload_returns_readable_bad_request() -> None:
+    class BrokenUpload:
+        async def read(self, size: int) -> bytes:
+            _ = size
+            raise OSError("stream closed")
+
+    try:
+        await _read_image_upload(BrokenUpload())
+    except ApiError as exc:
+        assert exc.status_code == 400
+        assert exc.code == "bad_request"
+        assert exc.message == "The uploaded image could not be read. Please choose the image again."
+        assert exc.details == {"field": "image"}
+    else:
+        raise AssertionError("Expected ApiError")
 
 
 def test_vision_service_timeout_maps_to_safe_readable_error() -> None:

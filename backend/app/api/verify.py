@@ -131,7 +131,15 @@ async def _read_image_upload(image: UploadFile | None) -> bytes:
         )
 
     max_bytes = get_settings().max_upload_mb * 1024 * 1024
-    image_bytes = await image.read(max_bytes + 1)
+    try:
+        image_bytes = await image.read(max_bytes + 1)
+    except Exception as exc:
+        raise ApiError(
+            status_code=400,
+            code="bad_request",
+            message="The uploaded image could not be read. Please choose the image again.",
+            details={"field": "image"},
+        ) from exc
     if len(image_bytes) > max_bytes:
         raise ApiError(
             status_code=413,

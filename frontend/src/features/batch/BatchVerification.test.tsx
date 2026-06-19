@@ -344,6 +344,28 @@ describe("BatchVerification", () => {
     expect(container.textContent).toContain("This label is missing an image.");
   });
 
+  it("renders unreadable service responses in plain English", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => {
+          throw new Error("not json");
+        }
+      })
+    );
+
+    await renderBatchVerification();
+    await fillRows(1);
+    await submitForm();
+    await waitForAsyncUpdates();
+
+    expect(container.textContent).toContain("Could not check this batch.");
+    expect(container.textContent).toContain(
+      "The verification service returned an unreadable response. Please try again."
+    );
+  });
+
   it("marks batch image and text inputs invalid after an empty submit", async () => {
     await renderBatchVerification();
     await submitForm();
