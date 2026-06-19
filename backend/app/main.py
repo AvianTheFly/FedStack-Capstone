@@ -1,10 +1,13 @@
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.health import router as health_router
+from app.api.verify import router as verify_router
 from app.core.config import get_settings
-from app.core.errors import ErrorEnvelope, ErrorPayload
+from app.core.error_handlers import api_error_handler, request_validation_error_handler
+from app.core.errors import ApiError, ErrorEnvelope, ErrorPayload
 
 
 def create_app() -> FastAPI:
@@ -20,6 +23,9 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health_router)
+    app.include_router(verify_router)
+    app.add_exception_handler(ApiError, api_error_handler)
+    app.add_exception_handler(RequestValidationError, request_validation_error_handler)
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:

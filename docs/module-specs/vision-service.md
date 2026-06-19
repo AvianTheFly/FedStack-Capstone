@@ -28,11 +28,13 @@ Outputs:
 
 ## 5. Public Interfaces
 
-Expected public interfaces:
+Public interfaces:
 
 - `VisionService.extract_label(image) -> ExtractedLabel`
-- `FakeVisionService` or equivalent test double.
+- `OpenAIVisionService` real provider implementation, configured by environment-backed settings.
+- `FakeVisionService` test double for unit and Phase 3 API tests.
 - `preprocess_image(image_bytes, content_type) -> PreprocessedImage`
+- `VisionServiceError` with safe provider/extraction categories.
 
 ## 6. Dependencies
 
@@ -51,6 +53,23 @@ Forbidden:
 ## 7. Error Behavior
 
 Non-label, blurry, angled, glare-heavy, timeout, and malformed provider responses should degrade gracefully. Return partial fields when possible. Use safe provider error categories when extraction cannot complete.
+
+OpenAI extraction uses structured output for exactly the seven canonical fields. Unknown, unclear, absent, obscured, or ambiguous fields must be returned as `null`; the provider prompt forbids guessing and asks for `government_warning` to be copied verbatim when visible.
+
+Safe categories include:
+
+- `non_label_image`
+- `blurry_image`
+- `angled_image`
+- `glare_heavy_image`
+- `partial_extraction`
+- `malformed_provider_output`
+- `provider_timeout`
+- `provider_unavailable`
+- `provider_not_configured`
+- `extraction_failed`
+
+Warning-style compliance is not claimed in Phase 2. The service preserves warning text for exact comparison; visual bold detection for the `GOVERNMENT WARNING:` lead-in remains a documented limitation unless a later phase adds an explicit evidence contract.
 
 ## 8. Tests Required
 
