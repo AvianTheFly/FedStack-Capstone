@@ -47,7 +47,8 @@ Allowed:
 
 - Pydantic v2.
 - Standard-library normalization helpers.
-- A lightweight fuzzy matching library if selected during Phase 1 planning.
+- `rapidfuzz` for fuzzy matching `brand_name`, `class_type`, and `producer`.
+  The Phase 1 threshold is `90` after case, punctuation, and whitespace normalization.
 
 Forbidden:
 
