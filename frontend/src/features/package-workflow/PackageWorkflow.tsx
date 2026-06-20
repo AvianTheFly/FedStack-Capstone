@@ -425,7 +425,9 @@ export function PackageWorkflow() {
                   )}
                   <span className="package-card__body">
                     <strong>{record.application_data.brand_name}</strong>
-                    <span className="status-chip">{record.status}</span>
+                    <span className={`status-chip status-chip--${cardStatusClass(record.status)}`}>
+                      {record.status}
+                    </span>
                     {record.item_error && <span className="package-card__error">{record.item_error}</span>}
                   </span>
                 </button>
