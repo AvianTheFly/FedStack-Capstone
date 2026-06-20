@@ -6,8 +6,8 @@ from typing import Any
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from app.api.dependencies import get_vision_service
 from app.api.batch import _read_item_image
+from app.api.dependencies import get_vision_service
 from app.core.config import get_settings
 from app.domain.comparison import CANONICAL_GOVERNMENT_WARNING
 from app.domain.models import ExtractedLabel
@@ -268,7 +268,10 @@ async def test_unreadable_batch_upload_becomes_item_error() -> None:
     assert item.index == 3
     assert item.error is not None
     assert item.error.code == "bad_request"
-    assert item.error.message == "This label image could not be read. Please choose the image again."
+    assert (
+        item.error.message
+        == "This label image could not be read. Please choose the image again."
+    )
     assert item.error.details == {"index": 3, "field": "image"}
 
 

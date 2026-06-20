@@ -1,9 +1,9 @@
 # TTB Label Verification
 
 AI-assisted proof-of-concept for checking alcohol beverage label images against structured
-application data. The app lets a reviewer upload one label, or a small batch of labels, enter the
-expected application fields, and receive field-by-field PASS/FAIL results with an overall
-`APPROVED` or `NEEDS_REVIEW` verdict.
+application data. The app lets a reviewer upload application packages made of JSON files and label
+images, review extracted label text, recheck edited extracted text through the backend comparison
+engine, and download reviewed-results JSON.
 
 ## Overview
 
@@ -34,14 +34,20 @@ Before submission, update this section with:
 
 - Frontend: deployed frontend URL
 - Backend health: deployed backend `/health` URL
-- Verification status: single-label, batch, warning exact-match, imperfect-image, and browser CORS
-  results
+- Verification status: package upload, single-package check, multi-package check, edited extracted
+  text recheck, export, warning exact-match, imperfect-image, and browser CORS results
 
 Do not mark these as passed until they have actually been tested.
 
 ## Features
 
-- Single-label verification with image upload and seven required application fields.
+- Package upload workflow with one JSON file and one label image per application.
+- JSON-driven application fields that are shown read-only to the reviewer.
+- Automatic single-package and multi-package verification. The frontend calls `/verify` for one
+  valid package and `/verify/batch` for multiple valid packages.
+- Editable extracted fields with backend-owned recomparison through `/compare`.
+- Reviewed-results JSON download. This is a local browser download, not server-side persistence or
+  external submission.
 - Batch verification with bounded backend concurrency and per-item error isolation.
 - Field-level expected-vs-found results.
 - Overall verdict rule: any failed field returns `NEEDS_REVIEW`; all fields passing returns
@@ -62,13 +68,16 @@ The system has a Vite/React frontend and a stateless FastAPI backend.
 
 ```text
 Frontend
-  - Single-label form
-  - Batch form
-  - Results and error states
-  - Calls backend with multipart/form-data
+  - Application package upload
+  - Filename-based JSON/image pairing
+  - Overview and detail views
+  - Read-only application fields
+  - Editable extracted fields
+  - Reviewed-results JSON download
+  - Calls backend APIs; does not implement comparison rules
 
 Backend
-  - FastAPI routes: /health, /verify, /verify/batch
+  - FastAPI routes: /health, /verify, /verify/batch, /compare
   - Upload validation and error shaping
   - Image preprocessing
   - VisionService extraction boundary
@@ -109,6 +118,17 @@ Returns service status:
   - repeated `images`
   - repeated `application_data`
 - Response: batch `items` plus `summary` with `passed`, `needs_review`, and `total`
+
+`POST /compare`
+
+- Request: `application/json`
+- Body:
+  - `application_data`: JSON object containing the seven canonical application fields
+  - `extracted_data`: JSON object containing the seven canonical extracted fields with string or
+    `null` values
+- Response: `VerificationResult`
+- Purpose: recompute backend comparison after a reviewer edits extracted text. This endpoint does
+  not accept images and does not call the vision service.
 
 Public API errors use:
 
@@ -237,12 +257,12 @@ cd frontend
 npm run build
 ```
 
-Final Phase 7 local audit result:
+Current local regression result:
 
 - Backend ruff: passed
-- Backend pytest: passed, 63 tests
+- Backend pytest: passed, 77 tests
 - Frontend typecheck: passed
-- Frontend tests: passed, 10 tests
+- Frontend tests: passed, 13 tests
 - Frontend build: passed
 
 ## Deployment
@@ -287,26 +307,105 @@ Deployment log checks before submission:
 
 ## How To Use
 
-Single-label verification:
+Application package workflow:
 
 1. Open the frontend.
-2. Choose the single-label view.
-3. Select a label image.
-4. Enter the seven application fields.
-5. Submit the form.
-6. Review the overall verdict and per-field PASS/FAIL results.
-7. For failed fields, compare the expected value with the extracted found value.
+2. Drag files into the upload area or choose files manually.
+3. Include one application JSON file and one label image for each application.
+4. The JSON `image_filename` must exactly match the uploaded image filename.
+5. Fix any readable package validation errors shown in the overview.
+6. Select `Check Applications`.
+7. Open an application from the overview to inspect the large image, read-only application values,
+   editable extracted values, and backend field results.
+8. If extracted text needs correction, edit the extracted values and select `Recheck Extracted Text`.
+9. Select `Download Reviewed Results JSON` to save the reviewed results locally.
 
-Batch verification:
+The app does not submit results to TTB, COLA, or any external system. It does not save application
+packages, images, extracted text, or reviewed results on the server.
 
-1. Open the batch view.
-2. Add one row per label.
-3. Select an image and enter application data for each complete row.
-4. Submit the batch.
-5. Review the summary counts.
-6. Open individual item results or item-level errors.
+## Application Package JSON
 
-## Sample Label Guidance
+Each uploaded application JSON file must contain `image_filename` and `application_data`.
+`application_data` must contain exactly the seven canonical fields and no extra fields.
+
+```json
+{
+  "image_filename": "evergreen-amber-bourbon.png",
+  "application_data": {
+    "brand_name": "EVERGREEN AMBER BOURBON",
+    "class_type": "Kentucky Straight Bourbon Whiskey",
+    "abv": "45% Alc./Vol. (90 Proof)",
+    "net_contents": "750 mL",
+    "producer": "Evergreen Spirits LLC, Louisville, KY",
+    "country_of_origin": "United States",
+    "government_warning": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems."
+  }
+}
+```
+
+Package validation checks invalid JSON, missing `image_filename`, missing `application_data`,
+missing canonical fields, extra non-canonical fields, duplicate `image_filename`, JSON with no
+matching image, image with no matching JSON, and unsupported image type.
+
+## Reviewed Results Export
+
+`Download Reviewed Results JSON` creates a browser download with this shape:
+
+```json
+{
+  "schema_version": "application-package-review-v1",
+  "generated_at": "2026-06-20T00:00:00.000Z",
+  "summary": {
+    "passed": 1,
+    "needs_review": 0,
+    "pending": 1,
+    "total": 2
+  },
+  "applications": [
+    {
+      "application_id": "application-1",
+      "json_filename": "evergreen-amber-bourbon.application.json",
+      "image_filename": "evergreen-amber-bourbon.png",
+      "status": "Passed",
+      "application_data": {
+        "brand_name": "EVERGREEN AMBER BOURBON",
+        "class_type": "Kentucky Straight Bourbon Whiskey",
+        "abv": "45% Alc./Vol. (90 Proof)",
+        "net_contents": "750 mL",
+        "producer": "Evergreen Spirits LLC, Louisville, KY",
+        "country_of_origin": "United States",
+        "government_warning": "GOVERNMENT WARNING: ..."
+      },
+      "reviewed_extracted_data": {
+        "brand_name": "Evergreen Amber Bourbon",
+        "class_type": "Kentucky Straight Bourbon Whiskey",
+        "abv": "45% Alc./Vol. (90 Proof)",
+        "net_contents": "750 mL",
+        "producer": "Evergreen Spirits LLC, Louisville, KY",
+        "country_of_origin": "United States",
+        "government_warning": "GOVERNMENT WARNING: ..."
+      },
+      "field_results": [],
+      "overall_verdict": "APPROVED",
+      "errors": []
+    }
+  ]
+}
+```
+
+Pending applications are represented honestly with `status` of `Pending Check`,
+`reviewed_extracted_data` of `null`, empty `field_results`, and `overall_verdict` of `null`.
+Exports do not include raw image data, local absolute paths, API keys, provider internals, or stack
+traces.
+
+## Demo Data And Sample Label Guidance
+
+Synthetic package workflow demo files live in:
+
+- `demo-data/inputs/`
+- `demo-data/outputs/reviewed-results.example.json`
+
+These are placeholder workflow fixtures, not real labels and not official TTB records.
 
 Keep two or three sample label images available for manual and live verification:
 
@@ -335,10 +434,15 @@ The build is phase-oriented:
 - Phase 5: batch endpoint and UI
 - Phase 6: robustness, performance, and accessibility
 - Phase 7: final README, audit, and deployment verification
+- Phase 8A: application package workflow contract and demo data
+- Phase 8B: backend-owned `/compare` endpoint
+- Phase 8C: package-based frontend workflow
+- Phase 8D: reviewed-results export, cleanup, docs, and regression
 
 The comparison engine is pure and tested independently from FastAPI, file I/O, and provider calls.
 The API layer stays thin and handles validation, orchestration, timing, and safe error shaping.
-The frontend mirrors API field names exactly while using friendly labels for reviewers.
+The frontend mirrors API field names exactly while using friendly labels for reviewers. It displays
+backend comparison results but does not duplicate comparison tolerances or verdict logic.
 
 ## Assumptions And Limitations
 

@@ -23,6 +23,16 @@ export interface ApplicationData {
   government_warning: string;
 }
 
+export interface ExtractedData {
+  brand_name: string | null;
+  class_type: string | null;
+  abv: string | null;
+  net_contents: string | null;
+  producer: string | null;
+  country_of_origin: string | null;
+  government_warning: string | null;
+}
+
 export type FieldStatus = "PASS" | "FAIL";
 export type OverallVerdict = "APPROVED" | "NEEDS_REVIEW";
 export type MatchType = "fuzzy" | "numeric" | "unit" | "synonym" | "exact";

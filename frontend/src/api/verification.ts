@@ -3,6 +3,7 @@ import type {
   ApplicationData,
   BatchResult,
   BatchVerificationRequestItem,
+  ExtractedData,
   VerificationResult
 } from "../types/api";
 
@@ -75,20 +76,10 @@ async function readSuccess<T>(response: Response): Promise<T> {
   }
 }
 
-export async function verifyLabel(
-  image: File,
-  applicationData: ApplicationData
-): Promise<VerificationResult> {
-  const formData = new FormData();
-  formData.append("image", image);
-  formData.append("application_data", JSON.stringify(applicationData));
-
+async function requestVerification<T>(path: string, init: RequestInit): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${getApiBaseUrl()}/verify`, {
-      method: "POST",
-      body: formData
-    });
+    response = await fetch(`${getApiBaseUrl()}${path}`, init);
   } catch (error) {
     if (error instanceof VerificationApiError) {
       throw error;
@@ -104,7 +95,21 @@ export async function verifyLabel(
     throw await readError(response);
   }
 
-  return readSuccess<VerificationResult>(response);
+  return readSuccess<T>(response);
+}
+
+export async function verifyLabel(
+  image: File,
+  applicationData: ApplicationData
+): Promise<VerificationResult> {
+  const formData = new FormData();
+  formData.append("image", image);
+  formData.append("application_data", JSON.stringify(applicationData));
+
+  return requestVerification<VerificationResult>("/verify", {
+      method: "POST",
+      body: formData
+  });
 }
 
 export async function verifyBatch(items: BatchVerificationRequestItem[]): Promise<BatchResult> {
@@ -114,26 +119,24 @@ export async function verifyBatch(items: BatchVerificationRequestItem[]): Promis
     formData.append("application_data", JSON.stringify(item.application_data));
   }
 
-  let response: Response;
-  try {
-    response = await fetch(`${getApiBaseUrl()}/verify/batch`, {
+  return requestVerification<BatchResult>("/verify/batch", {
       method: "POST",
       body: formData
-    });
-  } catch (error) {
-    if (error instanceof VerificationApiError) {
-      throw error;
-    }
+  });
+}
 
-    throw new VerificationApiError(
-      "Could not reach the verification service. Please check the connection and try again.",
-      "network_error"
-    );
-  }
-
-  if (!response.ok) {
-    throw await readError(response);
-  }
-
-  return readSuccess<BatchResult>(response);
+export async function compareExtractedData(
+  applicationData: ApplicationData,
+  extractedData: ExtractedData
+): Promise<VerificationResult> {
+  return requestVerification<VerificationResult>("/compare", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      application_data: applicationData,
+      extracted_data: extractedData
+    })
+  });
 }

@@ -67,6 +67,69 @@ Rules:
 - Government warning failures must include the extracted warning text in `found`.
 - The API contract requires exact warning-text comparison. If warning styling detection is added later, document the optional evidence field before implementation; do not change the required seven-field application-data contract casually.
 
+## `POST /compare`
+
+Phase: 8B.
+
+Request: `application/json`
+
+- `application_data`: JSON object containing the seven canonical application fields.
+- `extracted_data`: JSON object containing the seven canonical extracted fields. Values may be strings or `null`; missing fields and extra fields are invalid.
+
+Request body:
+
+```json
+{
+  "application_data": {
+    "brand_name": "OLD TOM DISTILLERY",
+    "class_type": "Kentucky Straight Bourbon Whiskey",
+    "abv": "45% Alc./Vol. (90 Proof)",
+    "net_contents": "750 mL",
+    "producer": "Old Tom Distillery, Louisville, KY",
+    "country_of_origin": "United States",
+    "government_warning": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems."
+  },
+  "extracted_data": {
+    "brand_name": "Old Tom Distillery",
+    "class_type": "Kentucky Straight Bourbon Whiskey",
+    "abv": "45% Alc./Vol. (90 Proof)",
+    "net_contents": "750ml",
+    "producer": "OLD TOM DISTILLERY, LOUISVILLE KY",
+    "country_of_origin": "USA",
+    "government_warning": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems."
+  }
+}
+```
+
+Success response:
+
+```json
+{
+  "results": [
+    {
+      "field": "brand_name",
+      "match_type": "fuzzy",
+      "expected": "OLD TOM DISTILLERY",
+      "found": "Old Tom Distillery",
+      "status": "PASS",
+      "message": "Values match after fuzzy normalization."
+    }
+  ],
+  "overall_verdict": "APPROVED",
+  "latency_ms": 12
+}
+```
+
+Rules:
+
+- `/compare` does not accept images and does not call the vision service.
+- `/compare` exists for reviewer-edited extracted values after initial vision extraction.
+- The backend remains the sole owner of comparison logic. The frontend must not reimplement PASS/FAIL, normalization, fuzzy comparison, ABV parsing, net contents parsing, country synonyms, exact government warning comparison, or verdict rules.
+- `extracted_data` must use exactly the seven canonical fields. Provider metadata such as `raw_text` or confidence scores is not accepted by this endpoint.
+- `overall_verdict` is `APPROVED` only when all fields pass.
+- Any field failure returns `NEEDS_REVIEW`.
+- Government warning failures must include the submitted extracted warning text in `found`; if the reviewer submits `null`, `found` is `null`.
+
 ## `POST /verify/batch`
 
 Phase: 5.
