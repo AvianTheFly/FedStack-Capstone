@@ -15,6 +15,7 @@ import type {
 import { FIELD_CONFIGS, resultOrder } from "../labelFields";
 import {
   ApplicationPackageRecord,
+  IncompleteApplicationRecord,
   PackageValidationError,
   VisibleStatus,
   buildReviewedResultsExport,
@@ -55,15 +56,20 @@ export function PackageWorkflow() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const detailHeadingRef = useRef<HTMLHeadingElement>(null);
   const recordsRef = useRef<ApplicationPackageRecord[]>([]);
+  const incompleteRecordsRef = useRef<IncompleteApplicationRecord[]>([]);
   const uploadedFilesRef = useRef<File[]>([]);
   const [records, setRecords] = useState<ApplicationPackageRecord[]>([]);
+  const [incompleteRecords, setIncompleteRecords] = useState<IncompleteApplicationRecord[]>([]);
   const [validationErrors, setValidationErrors] = useState<PackageValidationError[]>([]);
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
+  const [useOpenAiKey, setUseOpenAiKey] = useState(false);
 
   const selectedRecord = records.find((record) => record.package_id === selectedPackageId) ?? null;
+  const applicationSummary = summarizeApplications(records);
+  const incompleteSummary = summarizeIncompleteApplications(incompleteRecords);
   const sortedRecords = useMemo(
     () =>
       records
@@ -82,9 +88,16 @@ export function PackageWorkflow() {
     recordsRef.current = records;
   }, [records]);
 
+  useEffect(() => {
+    incompleteRecordsRef.current = incompleteRecords;
+  }, [incompleteRecords]);
+
   useEffect(
     () => () => {
       for (const record of recordsRef.current) {
+        revokePreviewUrl(record.image_preview_url);
+      }
+      for (const record of incompleteRecordsRef.current) {
         revokePreviewUrl(record.image_preview_url);
       }
     },
@@ -97,6 +110,7 @@ export function PackageWorkflow() {
 
     const parsed = await parseApplicationPackages(files);
     const currentRecords = recordsRef.current;
+    const currentIncompleteRecords = incompleteRecordsRef.current;
     const currentByKey = new Map(currentRecords.map((record) => [recordKey(record), record]));
     const recordsToCheck: ApplicationPackageRecord[] = [];
     const nextRecords = parsed.records.map((record) => {
@@ -118,14 +132,22 @@ export function PackageWorkflow() {
       recordsToCheck.push(nextRecord);
       return nextRecord;
     });
+    const nextIncompleteRecords = parsed.incomplete_records.map((record) => ({
+      ...record,
+      image_preview_url: record.image_file ? createPreviewUrl(record.image_file) : ""
+    }));
 
     for (const record of currentRecords) {
       if (!nextRecords.some((nextRecord) => nextRecord.image_preview_url === record.image_preview_url)) {
         revokePreviewUrl(record.image_preview_url);
       }
     }
+    for (const record of currentIncompleteRecords) {
+      revokePreviewUrl(record.image_preview_url);
+    }
 
     setRecords(nextRecords);
+    setIncompleteRecords(nextIncompleteRecords);
     setValidationErrors(parsed.errors);
     setSelectedPackageId((current) =>
       current && nextRecords.some((record) => record.package_id === current) ? current : null
@@ -330,12 +352,45 @@ export function PackageWorkflow() {
     URL.revokeObjectURL(url);
   }
 
+  function downloadDemoData() {
+    for (const filename of DEMO_DATA_FILENAMES) {
+      const link = document.createElement("a");
+      link.href = `${import.meta.env.BASE_URL}demo-data/inputs/${filename}`;
+      link.download = filename;
+      link.click();
+    }
+  }
+
   return (
     <main className="app-shell">
       <section className="tool-layout package-workflow" aria-labelledby="package-title">
-        <div className="page-heading">
-          <p className="phase-label">Application Package Check</p>
-          <h1 id="package-title">TTB Label Verification</h1>
+        <div className="page-heading page-heading--with-actions">
+          <div>
+            <p className="phase-label">Application Package Check</p>
+            <h1 id="package-title">TTB Label Verification</h1>
+          </div>
+          <div className="top-actions" aria-label="Application actions">
+            {isChecking && <p className="loading-message">Checking uploaded applications...</p>}
+            <button className="secondary-button" onClick={downloadDemoData} type="button">
+              Download Demo Data
+            </button>
+            <label className="openai-toggle">
+              <input
+                checked={useOpenAiKey}
+                onChange={(event) => setUseOpenAiKey(event.target.checked)}
+                type="checkbox"
+              />
+              <span>Use OPENAI KEY</span>
+            </label>
+            <button
+              className="secondary-button"
+              disabled={records.length === 0}
+              onClick={downloadReviewedResults}
+              type="button"
+            >
+              Submit
+            </button>
+          </div>
         </div>
 
         <div
@@ -385,21 +440,17 @@ export function PackageWorkflow() {
           </div>
         )}
 
-        <div className="package-actions package-actions--export">
-          {isChecking && <p className="loading-message">Checking uploaded applications...</p>}
-          <button
-            className="secondary-button"
-            disabled={records.length === 0}
-            onClick={downloadReviewedResults}
-            type="button"
-          >
-            Submit
-          </button>
-        </div>
-
         <section className="applications-section" aria-labelledby="applications-title">
           <div className="section-rule">
             <h2 id="applications-title">Applications</h2>
+            <SectionStats
+              items={[
+                { label: "total", value: applicationSummary.total, tone: "neutral" },
+                { label: "fail", value: applicationSummary.fail, tone: "fail" },
+                { label: "needs review", value: applicationSummary.needsReview, tone: "review" },
+                { label: "passed", value: applicationSummary.passed, tone: "passed" }
+              ]}
+            />
           </div>
           <div className="package-grid" aria-label="Uploaded applications">
           {records.length === 0 ? (
@@ -436,6 +487,44 @@ export function PackageWorkflow() {
           )}
           </div>
         </section>
+
+        {incompleteRecords.length > 0 && (
+          <section className="applications-section" aria-labelledby="incomplete-applications-title">
+            <div className="section-rule section-rule--muted">
+              <h2 id="incomplete-applications-title">Incomplete Applications</h2>
+              <SectionStats
+                items={[
+                  { label: "total", value: incompleteSummary.total, tone: "neutral" },
+                  { label: "json", value: incompleteSummary.json, tone: "review" },
+                  { label: "images", value: incompleteSummary.images, tone: "pending" }
+                ]}
+              />
+            </div>
+            <div className="package-grid" aria-label="Incomplete applications">
+              {incompleteRecords.map((record) => (
+                <article className="package-card package-card--incomplete" key={record.incomplete_id}>
+                  <div className="package-card__button package-card__button--static">
+                    {record.image_preview_url ? (
+                      <img alt="" className="package-card__thumbnail" src={record.image_preview_url} />
+                    ) : (
+                      <span className="package-card__thumbnail package-card__thumbnail--blank" />
+                    )}
+                    <span className="package-card__body">
+                      <strong>
+                        {record.json_filename ??
+                          record.image_filename ??
+                          record.expected_image_filename ??
+                          "Incomplete package"}
+                      </strong>
+                      <span className="status-chip status-chip--pending">Missing Pair</span>
+                      <span>{record.message}</span>
+                    </span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
 
         {selectedRecord && (
           <div
@@ -526,8 +615,42 @@ export function PackageWorkflow() {
           </section>
           </div>
         )}
+
+        {useOpenAiKey && (
+          <section className="openai-key-panel" aria-label="OpenAI key settings">
+            <strong>WARNING: THIS USES REAL API CALLS</strong>
+            <label>
+              API Key
+              <input autoComplete="off" type="password" />
+            </label>
+            <label>
+              Model
+              <input placeholder="gpt-4.1-mini" type="text" />
+            </label>
+          </section>
+        )}
       </section>
     </main>
+  );
+}
+
+interface SectionStatsProps {
+  items: Array<{
+    label: string;
+    tone: "neutral" | "fail" | "review" | "passed" | "pending";
+    value: number;
+  }>;
+}
+
+function SectionStats({ items }: SectionStatsProps) {
+  return (
+    <div className="section-stats" aria-label="Section summary">
+      {items.map((item) => (
+        <span className={`section-stat section-stat--${item.tone}`} key={item.label}>
+          <strong>{item.value}</strong> {item.label}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -697,6 +820,47 @@ function cardStatusClass(status: VisibleStatus): string {
 function applicationNumber(packageId: string): string {
   return packageId.replace(/^application-/, "");
 }
+
+function summarizeApplications(records: ApplicationPackageRecord[]) {
+  return records.reduce(
+    (summary, record) => {
+      summary.total += 1;
+      if (record.status === "Fail") {
+        summary.fail += 1;
+      } else if (record.status === "Needs Review") {
+        summary.needsReview += 1;
+      } else if (record.status === "Passed") {
+        summary.passed += 1;
+      }
+      return summary;
+    },
+    { fail: 0, needsReview: 0, passed: 0, total: 0 }
+  );
+}
+
+function summarizeIncompleteApplications(records: IncompleteApplicationRecord[]) {
+  return records.reduce(
+    (summary, record) => {
+      summary.total += 1;
+      if (record.kind === "json_missing_image") {
+        summary.json += 1;
+      } else {
+        summary.images += 1;
+      }
+      return summary;
+    },
+    { images: 0, json: 0, total: 0 }
+  );
+}
+
+const DEMO_DATA_FILENAMES = [
+  "coastal-pear-cider.application.json",
+  "coastal-pear-cider.png",
+  "evergreen-amber-bourbon.application.json",
+  "evergreen-amber-bourbon.png",
+  "northstar-riesling.application.json",
+  "northstar-riesling.png"
+];
 
 function defaultFieldDecision(
   record: ApplicationPackageRecord,

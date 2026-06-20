@@ -39,6 +39,17 @@ export interface ApplicationPackageRecord {
   item_error: string | null;
 }
 
+export interface IncompleteApplicationRecord {
+  incomplete_id: string;
+  kind: "json_missing_image" | "image_missing_json";
+  json_filename: string | null;
+  image_filename: string | null;
+  expected_image_filename: string | null;
+  image_file: File | null;
+  image_preview_url: string;
+  message: string;
+}
+
 export interface ReviewedResultsExport {
   schema_version: "application-package-review-v1";
   generated_at: string;
@@ -201,6 +212,7 @@ function reviewedFieldResults(record: ApplicationPackageRecord): VerificationRes
 
 export async function parseApplicationPackages(files: File[]): Promise<{
   records: ApplicationPackageRecord[];
+  incomplete_records: IncompleteApplicationRecord[];
   errors: PackageValidationError[];
 }> {
   const images = new Map<string, File>();
@@ -257,13 +269,6 @@ export async function parseApplicationPackages(files: File[]): Promise<{
       });
     }
 
-    if (!images.has(candidate.image_filename)) {
-      errors.push({
-        code: "json_with_no_matching_image",
-        filename: candidate.file.name,
-        message: `${candidate.file.name} names ${candidate.image_filename}, but that image was not uploaded.`
-      });
-    }
   }
 
   const referencedImageNames = new Set(
@@ -271,16 +276,6 @@ export async function parseApplicationPackages(files: File[]): Promise<{
       .map((candidate) => candidate.image_filename)
       .filter((imageFilename): imageFilename is string => Boolean(imageFilename))
   );
-  for (const imageName of images.keys()) {
-    if (!referencedImageNames.has(imageName)) {
-      errors.push({
-        code: "image_with_no_matching_json",
-        filename: imageName,
-        message: `${imageName} does not have a matching application JSON file.`
-      });
-    }
-  }
-
   const records = candidates
     .filter((candidate) => isValidCandidate(candidate, errors, images, filenameCounts))
     .map((candidate, index) => {
@@ -302,7 +297,48 @@ export async function parseApplicationPackages(files: File[]): Promise<{
       };
     });
 
-  return { records, errors };
+  const completeJsonFilenames = new Set(records.map((record) => record.json_filename));
+  const completeImageFilenames = new Set(records.map((record) => record.image_filename));
+  const incompleteRecords: IncompleteApplicationRecord[] = [];
+
+  for (const candidate of candidates) {
+    if (
+      candidate.errors.length === 0 &&
+      candidate.image_filename &&
+      candidate.application_data &&
+      !completeJsonFilenames.has(candidate.file.name) &&
+      (filenameCounts.get(candidate.image_filename) ?? 0) === 1 &&
+      !images.has(candidate.image_filename)
+    ) {
+      incompleteRecords.push({
+        incomplete_id: `json:${candidate.file.name}`,
+        kind: "json_missing_image",
+        json_filename: candidate.file.name,
+        image_filename: null,
+        expected_image_filename: candidate.image_filename,
+        image_file: null,
+        image_preview_url: "",
+        message: `${candidate.file.name} is waiting for ${candidate.image_filename}.`
+      });
+    }
+  }
+
+  for (const [imageName, imageFile] of images.entries()) {
+    if (!referencedImageNames.has(imageName) && !completeImageFilenames.has(imageName)) {
+      incompleteRecords.push({
+        incomplete_id: `image:${imageName}`,
+        kind: "image_missing_json",
+        json_filename: null,
+        image_filename: imageName,
+        expected_image_filename: null,
+        image_file: imageFile,
+        image_preview_url: "",
+        message: `${imageName} is waiting for a matching application JSON file.`
+      });
+    }
+  }
+
+  return { records, incomplete_records: incompleteRecords, errors };
 }
 
 function isJsonFile(file: File): boolean {

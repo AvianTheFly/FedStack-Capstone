@@ -219,6 +219,7 @@ describe("package parser", () => {
 
     expect(result.errors).toEqual([]);
     expect(result.records).toHaveLength(1);
+    expect(result.incomplete_records).toEqual([]);
     expect(result.records[0].image_filename).toBe("label.png");
     expect(result.records[0].application_data).toEqual(canonicalApplicationData);
     expect(result.records[0].status).toBe("Pending Check");
@@ -233,6 +234,7 @@ describe("package parser", () => {
     ]);
 
     expect(result.errors).toEqual([]);
+    expect(result.incomplete_records).toEqual([]);
     expect(result.records.map((record) => record.image_filename)).toEqual([
       "first.png",
       "second.png"
@@ -254,10 +256,34 @@ describe("package parser", () => {
     ]);
 
     expect(result.errors).toEqual([]);
+    expect(result.incomplete_records).toEqual([]);
     expect(result.records[0].image_filename).toBe("first.png");
     expect(result.records[0].image_file.name).toBe("first.png");
     expect(result.records[0].application_data.brand_name).toBe("FIRST BRAND");
     expect(result.records[1].image_file.name).toBe("second.png");
+  });
+
+  it("tracks incomplete packages when a matching image or JSON is missing", async () => {
+    const result = await parseApplicationPackages([
+      jsonFile("orphan-json.json", "not-uploaded.png"),
+      imageFile("orphan-image.png")
+    ]);
+
+    expect(result.errors).toEqual([]);
+    expect(result.records).toHaveLength(0);
+    expect(result.incomplete_records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "json_missing_image",
+          json_filename: "orphan-json.json",
+          expected_image_filename: "not-uploaded.png"
+        }),
+        expect.objectContaining({
+          kind: "image_missing_json",
+          image_filename: "orphan-image.png"
+        })
+      ])
+    );
   });
 
   it("reports readable errors for invalid packages", async () => {
@@ -283,8 +309,6 @@ describe("package parser", () => {
       jsonFile("duplicate-a.json", "duplicate.png"),
       jsonFile("duplicate-b.json", "duplicate.png"),
       imageFile("duplicate.png"),
-      jsonFile("orphan-json.json", "not-uploaded.png"),
-      imageFile("orphan-image.png"),
       imageFile("unsupported.gif", "image/gif")
     ]);
 
@@ -297,8 +321,6 @@ describe("package parser", () => {
         "missing_canonical_fields",
         "extra_non_canonical_fields",
         "duplicate_image_filename",
-        "json_with_no_matching_image",
-        "image_with_no_matching_json",
         "unsupported_image_type"
       ])
     );
@@ -351,11 +373,29 @@ describe("PackageWorkflow", () => {
 
     expect(container.querySelector('[data-testid="package-upload-area"]')).not.toBeNull();
     expect(container.textContent).toContain("Choose Files");
+    expect(container.textContent).toContain("Download Demo Data");
+    expect(container.textContent).toContain("Use OPENAI KEY");
     expect(container.textContent).toContain("Submit");
     expect(container.textContent).toContain("Applications");
     expect(container.textContent).not.toContain("Check Applications");
     expect(container.textContent).not.toContain("Single Label");
     expect(container.textContent).not.toContain("Batch Upload");
+  });
+
+  it("shows OpenAI key warning inputs when enabled", async () => {
+    await renderPackageWorkflow();
+
+    await act(async () => {
+      const checkbox = container.querySelector('input[type="checkbox"]');
+      if (!(checkbox instanceof HTMLInputElement)) {
+        throw new Error("Missing OpenAI checkbox");
+      }
+      checkbox.click();
+    });
+
+    expect(container.textContent).toContain("WARNING: THIS USES REAL API CALLS");
+    expect(container.textContent).toContain("API Key");
+    expect(container.textContent).toContain("Model");
   });
 
   it("adds later uploads to the current batch instead of replacing them", async () => {
@@ -379,7 +419,38 @@ describe("PackageWorkflow", () => {
 
     expect(container.textContent).toContain("OLD TOM DISTILLERY");
     expect(container.textContent).toContain("SECOND BRAND");
+    expect(container.textContent).toContain("2 total");
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows incomplete uploads and moves them to applications when the pair arrives", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => verificationResult()
+      })
+    );
+
+    await renderPackageWorkflow();
+    await chooseFiles([jsonFile("application.json", "label.png")]);
+
+    expect(container.textContent).toContain("Incomplete Applications");
+    expect(container.textContent).toContain("1 total");
+    expect(container.textContent).toContain("1 json");
+    expect(container.textContent).toContain("application.json is waiting for label.png.");
+    expect(fetch).not.toHaveBeenCalled();
+
+    await chooseFiles([imageFile("label.png")]);
+
+    expect(container.textContent).toContain("Applications");
+    expect(container.textContent).toContain("OLD TOM DISTILLERY");
+    expect(container.textContent).not.toContain("application.json is waiting for label.png.");
+    expect(fetch).toHaveBeenCalledWith("http://127.0.0.1:8000/verify", {
+      method: "POST",
+      body: expect.any(FormData),
+      signal: expect.any(AbortSignal)
+    });
   });
 
   it("calls /verify automatically when one application is uploaded", async () => {
@@ -536,7 +607,7 @@ describe("PackageWorkflow", () => {
     expect(buttonWithText("PASS").disabled).toBe(true);
     await clickButton("FAIL");
     expect(container.textContent).toContain("Fail");
-    expect(container.textContent).not.toContain("Data");
+    expect(container.querySelector("#data-title")).toBeNull();
   });
 
   it("does not open detail from card hover and closes detail when clicking outside", async () => {
@@ -555,7 +626,7 @@ describe("PackageWorkflow", () => {
       firstPackageButton().dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
       vi.advanceTimersByTime(2500);
     });
-    expect(container.textContent).not.toContain("Data");
+    expect(container.querySelector("#data-title")).toBeNull();
 
     await act(async () => {
       firstPackageButton().click();
@@ -565,7 +636,7 @@ describe("PackageWorkflow", () => {
     await act(async () => {
       overlay?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     });
-    expect(container.textContent).not.toContain("Data");
+    expect(container.querySelector("#data-title")).toBeNull();
   });
 
   it("field decision icons override the application status", async () => {
