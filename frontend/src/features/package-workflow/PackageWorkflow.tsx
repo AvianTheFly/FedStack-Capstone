@@ -465,7 +465,6 @@ export function PackageWorkflow() {
 
   function openDetail(packageId: string) {
     setSelectedPackageId(packageId);
-    window.requestAnimationFrame(() => detailHeadingRef.current?.focus());
   }
 
   function closeDetail() {
@@ -1388,7 +1387,10 @@ function ZoomableLabelImage({ alt, src }: ZoomableLabelImageProps) {
         ref={zoomPaneRef}
         role="img"
       >
-        <div className="detail-zoom-pane__clip">
+        {!zoomPosition.active && (
+          <p className="detail-zoom-pane__empty">Hover Mouse Over Image To Zoom In</p>
+        )}
+        <div className={`detail-zoom-pane__clip ${zoomPosition.active ? "detail-zoom-pane__clip--active" : ""}`}>
           <img
             alt=""
             draggable={false}
@@ -1670,7 +1672,19 @@ function DataPanel({ onFieldDecision, record }: DataPanelProps) {
               key={field.name}
             >
               <div className="data-row__heading">
-                <h4>{field.label}</h4>
+                <div className="data-row__title">
+                  <h4>{field.label}</h4>
+                  <button
+                    aria-label={`${field.label} comparison rule`}
+                    className="field-info-button"
+                    type="button"
+                  >
+                    i
+                    <span className="field-info-tooltip" role="tooltip">
+                      {comparisonRuleText(field.name)}
+                    </span>
+                  </button>
+                </div>
                 <div className="field-decision-buttons" aria-label={`${field.label} review status`}>
                   <FieldDecisionButton
                     decision="fail"
@@ -1694,7 +1708,7 @@ function DataPanel({ onFieldDecision, record }: DataPanelProps) {
               </div>
               <div className="data-pair">
                 <div className="data-value-group">
-                  <span className="data-value-label">Application:</span>
+                  <span className="data-value-label">Application</span>
                   <p
                     aria-label={`Application Value ${field.label}`}
                     className="application-value-text"
@@ -1704,7 +1718,7 @@ function DataPanel({ onFieldDecision, record }: DataPanelProps) {
                   </p>
                 </div>
                 <div className="data-value-group">
-                  <span className="data-value-label">AI Detected:</span>
+                  <span className="data-value-label">AI Detected</span>
                   <p
                     aria-label={`Extracted Value ${field.label}`}
                     className="ai-detected-value-text"
@@ -1714,11 +1728,6 @@ function DataPanel({ onFieldDecision, record }: DataPanelProps) {
                   </p>
                 </div>
               </div>
-              {fieldResult && (
-                <p className="data-row__message">
-                  <strong>AI Reasoning:</strong> {fieldResult.message}
-                </p>
-              )}
             </div>
           );
         })}
@@ -1846,6 +1855,25 @@ function summarizeFieldDecisions(decisions: Record<CanonicalLabelField, FieldRev
     },
     { fail: 0, pass: 0, review: 0, total: 0 }
   );
+}
+
+function comparisonRuleText(field: CanonicalLabelField): string {
+  switch (field) {
+    case "brand_name":
+      return "PASS when this is clearly the same brand name. Capital letters, spacing, punctuation, or word order can be a little different. Needs review when the brand looks like a different product.";
+    case "class_type":
+      return "PASS when the label describes the same product type or class. Small spelling or wording differences can be okay. Needs review when the label describes a different kind of alcohol.";
+    case "abv":
+      return "PASS when the alcohol strength is the same within 0.1 percentage points. Proof is converted to ABV, so 90 proof counts as 45% ABV. Needs review when the number is outside that tolerance or cannot be read.";
+    case "net_contents":
+      return "PASS when the container size is the same within 1 mL. The tool converts mL, L, and cL, so 750 mL and 0.75 L match. Needs review for different amounts or units the tool cannot convert.";
+    case "producer":
+      return "PASS when the producer, bottler, or company name and location clearly refer to the same business. Capital letters, punctuation, or small wording differences can be okay. Needs review when the company or location appears different.";
+    case "country_of_origin":
+      return "PASS when the country means the same place. Common United States wording such as USA, US, and United States of America is treated as United States. Needs review when it names a different country.";
+    case "government_warning":
+      return "This is strict. PASS only when the warning words and capitalization match exactly, after ignoring extra spaces. Title case, missing punctuation, or changed wording needs review. Limitation: AI can have a hard time confirming that GOVERNMENT WARNING: is bold, so a person should still check bold styling.";
+  }
 }
 
 const DEMO_DATA_ARCHIVE_FILENAME = "demo-inputs.zip";

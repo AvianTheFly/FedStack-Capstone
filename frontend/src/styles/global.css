@@ -874,8 +874,7 @@ p {
 }
 
 .package-card__button:focus,
-.package-dropzone:focus-within,
-.detail-panel h2:focus {
+.package-dropzone:focus-within {
   outline: 4px solid #0f766e;
   outline-offset: 3px;
 }
@@ -960,10 +959,12 @@ p {
 .detail-panel {
   position: relative;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 18px;
   width: min(1280px, 88vw);
+  height: min(86vh, 920px);
   max-height: 86vh;
-  overflow: auto;
+  overflow: hidden;
   padding: 24px;
   border: 2px solid #1f2937;
   border-radius: 8px;
@@ -1020,6 +1021,9 @@ p {
   grid-template-columns: minmax(260px, 1fr) minmax(0, 2fr);
   gap: 24px;
   align-items: start;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .detail-image-zoom {
@@ -1199,8 +1203,27 @@ p {
   inset: 0;
   border-radius: 6px;
   contain: paint;
+  opacity: 0;
   overflow: hidden;
   overflow: clip;
+  visibility: hidden;
+}
+
+.detail-zoom-pane__clip--active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.detail-zoom-pane__empty {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  padding: 0 18px;
+  color: #36505c;
+  font-size: 1.05rem;
+  font-weight: 950;
+  line-height: 1.25;
+  text-align: center;
 }
 
 .detail-zoom-pane img {
@@ -1225,6 +1248,7 @@ p {
 .detail-fields {
   display: grid;
   gap: 20px;
+  min-height: 0;
 }
 
 .data-panel {
@@ -1243,18 +1267,18 @@ p {
 }
 
 .data-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .data-row {
+  position: relative;
   display: grid;
-  gap: 12px;
-  flex: 1 1 300px;
-  min-width: min(100%, 300px);
-  padding: 16px;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
   border: 2px solid #d1d5db;
   border-radius: 8px;
   background: #ffffff;
@@ -1283,7 +1307,70 @@ p {
 
 .data-row h4 {
   margin: 0;
-  font-size: 1.12rem;
+  font-size: 1.28rem;
+  line-height: 1.12;
+}
+
+.data-row__title {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.field-info-button {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 2px solid #52616b;
+  border-radius: 999px;
+  background: #f9fafb;
+  color: #1f2937;
+  cursor: help;
+  font-size: 0.95rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.field-info-button:focus {
+  outline: 3px solid #0f766e;
+  outline-offset: 2px;
+}
+
+.field-info-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  z-index: 5;
+  display: block;
+  width: min(320px, 70vw);
+  padding: 10px 12px;
+  border: 2px solid #1f2937;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 16px 42px rgba(17, 24, 39, 0.2);
+  color: #111827;
+  font-size: 0.92rem;
+  font-weight: 800;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  text-align: left;
+  transform: translate(-50%, 4px);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+  white-space: normal;
+}
+
+.field-info-button:hover .field-info-tooltip,
+.field-info-button:focus .field-info-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 .field-decision-buttons {
@@ -1295,27 +1382,27 @@ p {
 .data-pair {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 10px;
+  gap: 6px;
 }
 
 .data-value-group {
   display: grid;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
 
 .data-value-group label,
 .data-value-label {
   color: #36505c;
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   font-weight: 900;
 }
 
 .application-value-text {
   margin: 0;
-  color: #4b5563;
+  color: #111827;
   font-weight: 800;
-  line-height: 1.45;
+  line-height: 1.28;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -1324,7 +1411,7 @@ p {
   margin: 0;
   color: #0f172a;
   font-weight: 850;
-  line-height: 1.45;
+  line-height: 1.28;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -1559,6 +1646,7 @@ p {
 
   .detail-panel {
     width: min(100%, 96vw);
+    height: 95vh;
     max-height: 95vh;
     padding: 18px;
   }

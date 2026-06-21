@@ -699,9 +699,11 @@ describe("PackageWorkflow", () => {
     expect(container.querySelector("#detail-title")?.textContent).toBe("OLD TOM DISTILLERY");
     expect(container.textContent).toContain("Data");
     expect(container.textContent).toContain("Application #");
-    expect(container.textContent).toContain("Application:");
-    expect(container.textContent).toContain("AI Detected:");
+    expect(container.textContent).toContain("Application");
+    expect(container.textContent).toContain("AI Detected");
+    expect(container.textContent).toContain("Hover Mouse Over Image To Zoom In");
     expect(container.textContent).not.toContain("Backend Results");
+    expect(container.textContent).not.toContain("AI Reasoning");
     expect(container.textContent).not.toContain("label.png");
 
     const applicationBrand = container.querySelector('[aria-label="Application Value Brand Name"]');
@@ -713,6 +715,10 @@ describe("PackageWorkflow", () => {
     expect(container.querySelector('[aria-label="Fail Brand Name"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="Needs review Brand Name"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="Pass Brand Name"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Brand Name comparison rule"]')).not.toBeNull();
+    expect(container.textContent).toContain("same within 0.1 percentage points");
+    expect(container.textContent).toContain("same within 1 mL");
+    expect(container.textContent).toContain("AI can have a hard time confirming");
   });
 
   it("filters detail data fields from the data header count buttons", async () => {
@@ -796,6 +802,8 @@ describe("PackageWorkflow", () => {
     if (!(labelImage instanceof HTMLImageElement) || !(zoomImage instanceof HTMLImageElement)) {
       throw new Error("Missing zoom images");
     }
+    const zoomClip = zoomPane.querySelector(".detail-zoom-pane__clip");
+    expect(zoomClip?.classList.contains("detail-zoom-pane__clip--active")).toBe(false);
 
     vi.spyOn(imageFrame, "getBoundingClientRect").mockReturnValue({
       bottom: 400,
@@ -843,6 +851,7 @@ describe("PackageWorkflow", () => {
 
     expect(zoomPane.getAttribute("aria-label")).toBe("Magnified label image");
     expect(zoomPane.classList.contains("detail-zoom-pane--active")).toBe(true);
+    expect(zoomClip?.classList.contains("detail-zoom-pane__clip--active")).toBe(true);
     expect((labelImage as HTMLElement).style.width).toBe("200px");
     expect((labelImage as HTMLElement).style.height).toBe("200px");
     expect((labelImage as HTMLElement).style.top).toBe("100px");
