@@ -120,6 +120,16 @@ select {
   height: 18px;
 }
 
+.openai-status {
+  padding: 8px 10px;
+  border: 2px solid #11724f;
+  border-radius: 8px;
+  background: #ecfdf5;
+  color: #0f5138;
+  font-size: 0.92rem;
+  font-weight: 900;
+}
+
 .phase-label {
   margin: 0 0 8px;
   color: #36505c;
@@ -759,24 +769,35 @@ p {
 }
 
 .openai-key-panel {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  z-index: 25;
   display: grid;
   gap: 14px;
-  width: min(420px, calc(100vw - 32px));
+  width: min(460px, calc(100vw - 32px));
   padding: 22px;
   border: 3px solid #b42318;
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 24px 80px rgba(17, 24, 39, 0.28);
-  transform: translate(-50%, -50%);
 }
 
 .openai-key-panel strong {
   color: #8a1f13;
   font-size: 1.15rem;
+}
+
+.openai-key-panel h2,
+.warning-dialog h2 {
+  margin: 0;
+  color: #111827;
+  font-size: 1.65rem;
+  line-height: 1.14;
+}
+
+.openai-key-panel p,
+.warning-dialog p {
+  margin: 0;
+  color: #36505c;
+  font-weight: 800;
+  line-height: 1.35;
 }
 
 .openai-key-panel label {
@@ -791,6 +812,111 @@ p {
   padding: 10px 12px;
   border: 2px solid #52616b;
   border-radius: 8px;
+}
+
+.modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(17, 24, 39, 0.46);
+}
+
+.warning-dialog {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 16px;
+  width: min(560px, calc(100vw - 32px));
+  padding: 22px;
+  border: 3px solid #b45309;
+  border-radius: 8px;
+  background: #fffdf8;
+  box-shadow: 0 24px 80px rgba(17, 24, 39, 0.3);
+}
+
+.submit-warning-dialog {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 16px;
+  width: min(680px, calc(100vw - 32px));
+  padding: 22px;
+  border: 3px solid #1f2937;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 24px 80px rgba(17, 24, 39, 0.3);
+}
+
+.warning-dialog__marker {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border: 3px solid #b45309;
+  border-radius: 999px;
+  background: #fffbeb;
+  color: #8a4b0f;
+  font-size: 2rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.warning-dialog__content {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.warning-dialog__field-list {
+  display: grid;
+  gap: 8px;
+}
+
+.warning-dialog__field-group {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 2px solid #f59e0b;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.warning-dialog__field-group strong {
+  color: #8a4b0f;
+  font-size: 0.95rem;
+}
+
+.warning-dialog__field-group span {
+  color: #111827;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.dialog-actions--three {
+  justify-content: stretch;
+}
+
+.dialog-actions .decision-button,
+.dialog-actions .secondary-button {
+  flex: 0 1 auto;
+  min-width: 132px;
+  min-height: 50px;
+}
+
+.dialog-error {
+  padding: 10px 12px;
+  border: 2px solid #b42318;
+  border-radius: 8px;
+  background: #fff7f5;
+  color: #8a1f13;
 }
 
 .package-grid {
@@ -912,11 +1038,25 @@ p {
   width: max-content;
   max-width: 100%;
   padding: 6px 10px;
+  border: 0;
   border-radius: 6px;
   background: #1f2937;
   color: #ffffff;
   font-size: 0.95rem;
   font-weight: 900;
+}
+
+.status-chip--button {
+  cursor: pointer;
+}
+
+.status-chip--button:hover {
+  filter: brightness(0.95);
+}
+
+.status-chip--button:focus {
+  outline: 4px solid #0f766e;
+  outline-offset: 3px;
 }
 
 .status-chip--large {
@@ -1252,6 +1392,7 @@ p {
 }
 
 .data-panel {
+  container-type: inline-size;
   min-width: 0;
   padding: 18px;
   border: 2px solid #d1d5db;
@@ -1449,7 +1590,12 @@ p {
 
 .field-icon-button[aria-pressed="true"] {
   border-color: #111827;
+  box-shadow:
+    0 0 0 3px #ffffff,
+    0 0 0 7px #111827,
+    0 10px 22px rgba(17, 24, 39, 0.28);
   opacity: 1;
+  transform: translateY(-1px);
 }
 
 .field-icon-button:focus {
@@ -1465,6 +1611,10 @@ p {
 
 .data-row__message strong {
   color: #36505c;
+}
+
+.data-row--field-government_warning {
+  grid-column: 1 / -1;
 }
 
 .package-fieldset {
@@ -1524,10 +1674,10 @@ p {
   background: #11724f;
 }
 
-.decision-button:disabled {
+.decision-button--disabled {
   background: #d1d5db;
   color: #4b5563;
-  cursor: not-allowed;
+  cursor: pointer;
   opacity: 0.72;
 }
 

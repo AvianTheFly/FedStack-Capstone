@@ -83,7 +83,6 @@ def test_demo_application_inputs_match_intended_scenarios() -> None:
                 "net_contents",
                 "producer",
                 "country_of_origin",
-                "government_warning",
             },
         ),
     }

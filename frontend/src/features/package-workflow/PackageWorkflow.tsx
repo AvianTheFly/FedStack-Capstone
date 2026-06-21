@@ -19,7 +19,7 @@ import {
   IncompleteApplicationRecord,
   PackageValidationError,
   VisibleStatus,
-  buildReviewedResultsExport,
+  buildPretendSubmissionZip,
   emptyExtractedData,
   extractedDataFromResult,
   parseApplicationPackages,
@@ -55,6 +55,25 @@ function revokePreviewUrl(url: string) {
 
 type IncompleteFilter = "json" | "image";
 type AbvOperator = "any" | "lt" | "eq" | "gt";
+type ReviewOverrideAction = "fail" | "pass";
+
+interface ReviewOverrideWarning {
+  action: ReviewOverrideAction;
+  confirmLabel: string;
+  groups: Array<{ fields: string[]; label: string }>;
+  packageId: string;
+  title: string;
+}
+
+interface OpenAiSettings {
+  hasApiKey: boolean;
+  model: string;
+}
+
+interface OpenAiDraft {
+  apiKey: string;
+  model: string;
+}
 
 interface AdvancedSearchFilters {
   abvOperator: AbvOperator;
@@ -216,6 +235,12 @@ export function PackageWorkflow() {
   const [isChecking, setIsChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
   const [useOpenAiKey, setUseOpenAiKey] = useState(false);
+  const [isOpenAiDialogOpen, setIsOpenAiDialogOpen] = useState(false);
+  const [openAiDraft, setOpenAiDraft] = useState<OpenAiDraft>({ apiKey: "", model: "gpt-4.1-mini" });
+  const [openAiSettings, setOpenAiSettings] = useState<OpenAiSettings | null>(null);
+  const [openAiDialogError, setOpenAiDialogError] = useState<string | null>(null);
+  const [reviewOverrideWarning, setReviewOverrideWarning] = useState<ReviewOverrideWarning | null>(null);
+  const [isSubmitWarningOpen, setIsSubmitWarningOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isAdvancedSearchOpen, setIsAdvancedSearchOpen] = useState(false);
   const [statusFilters, setStatusFilters] = useState<Record<VisibleStatus, boolean>>({
@@ -472,6 +497,70 @@ export function PackageWorkflow() {
     setSelectedPackageId(null);
   }
 
+  function handlePassClick(record: ApplicationPackageRecord) {
+    if (canMarkApplicationPass(record)) {
+      setRecordStatus(record.package_id, "Passed");
+      return;
+    }
+
+    setReviewOverrideWarning(buildReviewOverrideWarning(record, "pass"));
+  }
+
+  function handleFailClick(record: ApplicationPackageRecord) {
+    if (canMarkApplicationFail(record)) {
+      void markApplicationFailed(record.package_id);
+      return;
+    }
+
+    setReviewOverrideWarning(buildReviewOverrideWarning(record, "fail"));
+  }
+
+  function confirmReviewOverride() {
+    if (!reviewOverrideWarning) {
+      return;
+    }
+
+    if (reviewOverrideWarning.action === "pass") {
+      setRecordStatus(reviewOverrideWarning.packageId, "Passed");
+    } else {
+      setRecordStatus(reviewOverrideWarning.packageId, "Fail");
+    }
+    setReviewOverrideWarning(null);
+  }
+
+  function handleOpenAiToggleChange(checked: boolean) {
+    if (checked) {
+      setOpenAiDialogError(null);
+      setIsOpenAiDialogOpen(true);
+      return;
+    }
+
+    setUseOpenAiKey(false);
+    setOpenAiSettings(null);
+    setOpenAiDialogError(null);
+  }
+
+  function proceedWithOpenAiSettings() {
+    const apiKey = openAiDraft.apiKey.trim();
+    const model = openAiDraft.model.trim() || "gpt-4.1-mini";
+
+    if (!apiKey) {
+      setOpenAiDialogError("Enter an OpenAI API key before using the real AI vision service.");
+      return;
+    }
+
+    setOpenAiSettings({ hasApiKey: true, model });
+    setOpenAiDraft({ apiKey: "", model });
+    setUseOpenAiKey(true);
+    setIsOpenAiDialogOpen(false);
+    setOpenAiDialogError(null);
+  }
+
+  function cancelOpenAiSettings() {
+    setIsOpenAiDialogOpen(false);
+    setOpenAiDialogError(null);
+  }
+
   function setRecordStatus(packageId: string, status: VisibleStatus) {
     setRecords((current) =>
       current.map((record) => (record.package_id === packageId ? { ...record, status } : record))
@@ -539,16 +628,23 @@ export function PackageWorkflow() {
     closeDetail();
   }
 
-  function downloadReviewedResults() {
-    const payload = buildReviewedResultsExport(records);
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })
-    );
+  async function downloadPretendSubmission() {
+    const archive = await buildPretendSubmissionZip(records, incompleteRecords);
+    const url = URL.createObjectURL(archive);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "reviewed-results.json";
+    link.download = "pretend-submission.zip";
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  function proceedWithoutDownload() {
+    setIsSubmitWarningOpen(false);
+  }
+
+  async function proceedWithDownload() {
+    await downloadPretendSubmission();
+    setIsSubmitWarningOpen(false);
   }
 
   function downloadDemoData() {
@@ -629,22 +725,33 @@ export function PackageWorkflow() {
             <h1 id="package-title">TTB Label Verification</h1>
           </div>
           <div className="top-actions" aria-label="Application actions">
-            {isChecking && <p className="loading-message">Checking uploaded applications...</p>}
+            {isChecking && (
+              <p className="loading-message">
+                {useOpenAiKey
+                  ? "Sending documents to real AI vision service, waiting for ChatGPT to respond..."
+                  : "Checking uploaded applications..."}
+              </p>
+            )}
             <button className="secondary-button" onClick={downloadDemoData} type="button">
               Download Demo Data
             </button>
             <label className="openai-toggle">
               <input
                 checked={useOpenAiKey}
-                onChange={(event) => setUseOpenAiKey(event.target.checked)}
+                onChange={(event) => handleOpenAiToggleChange(event.target.checked)}
                 type="checkbox"
               />
               <span>Use OPENAI KEY</span>
             </label>
+            {useOpenAiKey && openAiSettings && (
+              <span className="openai-status" aria-label="OpenAI mode status">
+                Real AI vision ready: {openAiSettings.model}
+              </span>
+            )}
             <button
               className="secondary-button"
-              disabled={records.length === 0}
-              onClick={downloadReviewedResults}
+              disabled={records.length === 0 && incompleteRecords.length === 0}
+              onClick={() => setIsSubmitWarningOpen(true)}
               type="button"
             >
               Submit
@@ -915,7 +1022,7 @@ export function PackageWorkflow() {
                   </p>
                 </div>
               ) : (
-                filteredIncompleteRecords.map((record) => (
+                filteredIncompleteRecords.map((record, index) => (
                   <article className="package-card package-card--incomplete" key={record.incomplete_id}>
                     <div className="package-card__button package-card__button--static">
                       {record.image_preview_url ? (
@@ -924,14 +1031,10 @@ export function PackageWorkflow() {
                         <span className="package-card__thumbnail package-card__thumbnail--blank" />
                       )}
                       <span className="package-card__body">
-                        <strong>
-                          {record.json_filename ??
-                            record.image_filename ??
-                            record.expected_image_filename ??
-                            "Incomplete package"}
-                        </strong>
-                        <span className="status-chip status-chip--pending">Missing Pair</span>
-                        <span>{record.message}</span>
+                        <strong>Incomplete Application {index + 1}</strong>
+                        <span className="status-chip status-chip--pending">
+                          {record.kind === "json_missing_image" ? "Missing Image" : "Missing Application Data"}
+                        </span>
                       </span>
                     </div>
                   </article>
@@ -979,9 +1082,14 @@ export function PackageWorkflow() {
                   </h2>
                 </div>
               </div>
-              <span className={`status-chip status-chip--large status-chip--${cardStatusClass(selectedRecord.status)}`}>
+              <button
+                aria-label={`Close detail view. Current status: ${selectedRecord.status}`}
+                className={`status-chip status-chip--large status-chip--button status-chip--${cardStatusClass(selectedRecord.status)}`}
+                onClick={closeDetail}
+                type="button"
+              >
                 {selectedRecord.status}
-              </span>
+              </button>
             </div>
 
             <div className="detail-layout">
@@ -1002,9 +1110,9 @@ export function PackageWorkflow() {
 
             <div className="review-actions" aria-label="Review decision">
               <button
-                className="decision-button decision-button--fail"
-                disabled={!selectedCanFail}
-                onClick={() => markApplicationFailed(selectedRecord.package_id)}
+                aria-disabled={!selectedCanFail}
+                className={`decision-button decision-button--fail ${selectedCanFail ? "" : "decision-button--disabled"}`}
+                onClick={() => handleFailClick(selectedRecord)}
                 type="button"
               >
                 FAIL
@@ -1017,9 +1125,9 @@ export function PackageWorkflow() {
                 NEEDS REVIEW
               </button>
               <button
-                className="decision-button decision-button--pass"
-                disabled={!selectedCanPass}
-                onClick={() => setRecordStatus(selectedRecord.package_id, "Passed")}
+                aria-disabled={!selectedCanPass}
+                className={`decision-button decision-button--pass ${selectedCanPass ? "" : "decision-button--disabled"}`}
+                onClick={() => handlePassClick(selectedRecord)}
                 type="button"
               >
                 PASS
@@ -1029,18 +1137,142 @@ export function PackageWorkflow() {
           </div>
         )}
 
-        {useOpenAiKey && (
-          <section className="openai-key-panel" aria-label="OpenAI key settings">
-            <strong>WARNING: THIS USES REAL API CALLS</strong>
-            <label>
-              API Key
-              <input autoComplete="off" type="password" />
-            </label>
-            <label>
-              Model
-              <input placeholder="gpt-4.1-mini" type="text" />
-            </label>
-          </section>
+        {reviewOverrideWarning && (
+          <div className="modal-scrim" role="presentation">
+            <section
+              aria-labelledby="review-warning-title"
+              aria-modal="true"
+              className="warning-dialog"
+              role="dialog"
+            >
+              <div className="warning-dialog__marker">!</div>
+              <div className="warning-dialog__content">
+                <p className="result-label">Review override</p>
+                <h2 id="review-warning-title">{reviewOverrideWarning.title}</h2>
+                <p>
+                  {reviewOverrideWarning.action === "pass"
+                    ? "The application still has fields that are not marked as pass."
+                    : "All fields are currently marked as pass."}
+                </p>
+                <div className="warning-dialog__field-list" aria-label="Affected fields">
+                  {reviewOverrideWarning.groups.map((group) => (
+                    <div className="warning-dialog__field-group" key={group.label}>
+                      <strong>{group.label}</strong>
+                      <span>{group.fields.join(", ")}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="dialog-actions">
+                  <button
+                    className="secondary-button"
+                    onClick={() => setReviewOverrideWarning(null)}
+                    type="button"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className={`decision-button decision-button--${reviewOverrideWarning.action}`}
+                    onClick={confirmReviewOverride}
+                    type="button"
+                  >
+                    {reviewOverrideWarning.confirmLabel}
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {isSubmitWarningOpen && (
+          <div className="modal-scrim" role="presentation">
+            <section
+              aria-labelledby="submit-warning-title"
+              aria-modal="true"
+              className="submit-warning-dialog"
+              role="dialog"
+            >
+              <div className="warning-dialog__marker">!</div>
+              <div className="warning-dialog__content">
+                <p className="result-label">Pretend submission</p>
+                <h2 id="submit-warning-title">This is the pretend submission.</h2>
+                <p>
+                  This will download the application documents with pass/fail attached.
+                </p>
+                <div className="dialog-actions dialog-actions--three">
+                  <button
+                    className="secondary-button"
+                    onClick={() => setIsSubmitWarningOpen(false)}
+                    type="button"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="secondary-button"
+                    onClick={proceedWithoutDownload}
+                    type="button"
+                  >
+                    Proceed Without Download
+                  </button>
+                  <button
+                    className="decision-button decision-button--pass"
+                    onClick={() => void proceedWithDownload()}
+                    type="button"
+                  >
+                    Proceed With Download
+                  </button>
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {isOpenAiDialogOpen && (
+          <div className="modal-scrim" role="presentation">
+            <section
+              aria-labelledby="openai-dialog-title"
+              aria-modal="true"
+              className="openai-key-panel"
+              role="dialog"
+            >
+              <strong>WARNING: THIS USES REAL API CALLS</strong>
+              <h2 id="openai-dialog-title">Use Real AI Vision</h2>
+              <p>
+                Enter the session settings for real vision mode. The backend confirms
+                authentication when the first real vision request is sent.
+              </p>
+              <label>
+                API Key
+                <input
+                  autoComplete="off"
+                  onChange={(event) =>
+                    setOpenAiDraft((current) => ({ ...current, apiKey: event.target.value }))
+                  }
+                  type="password"
+                  value={openAiDraft.apiKey}
+                />
+              </label>
+              <label>
+                Model
+                <input
+                  onChange={(event) =>
+                    setOpenAiDraft((current) => ({ ...current, model: event.target.value }))
+                  }
+                  placeholder="gpt-4.1-mini"
+                  type="text"
+                  value={openAiDraft.model}
+                />
+              </label>
+              {openAiDialogError && <p className="dialog-error">{openAiDialogError}</p>}
+              <div className="dialog-actions">
+                <button className="secondary-button" onClick={cancelOpenAiSettings} type="button">
+                  Cancel
+                </button>
+                <button className="decision-button decision-button--review" onClick={proceedWithOpenAiSettings} type="button">
+                  Proceed
+                </button>
+              </div>
+            </section>
+          </div>
         )}
       </section>
     </main>
@@ -1669,7 +1901,7 @@ function DataPanel({ onFieldDecision, record }: DataPanelProps) {
 
           return (
             <div
-              className={`data-row data-row--${fieldResult?.status.toLowerCase() ?? "pending"}`}
+              className={`data-row data-row--${fieldResult?.status.toLowerCase() ?? "pending"} data-row--field-${field.name}`}
               key={field.name}
             >
               <div className="data-row__heading">
@@ -1940,4 +2172,34 @@ function canMarkApplicationFail(record: ApplicationPackageRecord): boolean {
 
 function canMarkApplicationPass(record: ApplicationPackageRecord): boolean {
   return Object.values(resolvedFieldDecisions(record)).every((decision) => decision === "pass");
+}
+
+function buildReviewOverrideWarning(record: ApplicationPackageRecord, action: ReviewOverrideAction): ReviewOverrideWarning {
+  const decisions = resolvedFieldDecisions(record);
+  const groupedFields = FIELD_CONFIGS.reduce(
+    (groups, field) => {
+      groups[decisions[field.name]].push(field.label);
+      return groups;
+    },
+    { fail: [] as string[], review: [] as string[], pass: [] as string[] }
+  );
+
+  const groups =
+    action === "pass"
+      ? [
+          { label: "Fail", fields: groupedFields.fail },
+          { label: "Needs Review", fields: groupedFields.review }
+        ].filter((group) => group.fields.length > 0)
+      : [{ label: "Pass", fields: groupedFields.pass }];
+
+  return {
+    action,
+    confirmLabel: action === "pass" ? "Proceed With Pass" : "Proceed With Fail",
+    groups,
+    packageId: record.package_id,
+    title:
+      action === "pass"
+        ? "Pass this application anyway?"
+        : "Fail this application anyway?"
+  };
 }
