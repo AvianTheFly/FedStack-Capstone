@@ -1,13 +1,16 @@
 import json
 from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from PIL import Image
 
+from app.domain.comparison import compare_label
+from app.domain.models import ApplicationData
 from app.domain.models import ExtractedLabel
-from app.services.fake_vision import FakeVisionService
+from app.services.fake_vision import DemoVisionService, FakeVisionService
 from app.services.image_preprocess import ImagePreprocessError, preprocess_image
 from app.services.vision import (
     CANONICAL_EXTRACTION_FIELDS,
@@ -50,6 +53,61 @@ async def test_fake_vision_service_can_raise_categorized_error() -> None:
         await service.extract_label(image)
 
     assert exc_info.value.category == "provider_timeout"
+
+
+@pytest.mark.asyncio
+async def test_demo_vision_service_uses_filename_keyed_extraction() -> None:
+    image = preprocess_image(make_image_bytes(), "image/png", filename="evergreen-amber-bourbon.png")
+    service = DemoVisionService()
+
+    result = await service.extract_label(image)
+
+    assert result.brand_name == "EVERGREEN AMBER BOURBON"
+    assert service.calls == [image]
+
+
+def test_demo_application_inputs_match_intended_scenarios() -> None:
+    project_root = Path(__file__).resolve().parents[3]
+    cases = {
+        "evergreen-amber-bourbon": ("APPROVED", set()),
+        "coastal-pear-cider": (
+            "NEEDS_REVIEW",
+            {"abv", "producer", "government_warning"},
+        ),
+        "northstar-riesling": (
+            "NEEDS_REVIEW",
+            {
+                "brand_name",
+                "class_type",
+                "abv",
+                "net_contents",
+                "producer",
+                "country_of_origin",
+                "government_warning",
+            },
+        ),
+    }
+
+    for stem, (verdict, failed_fields) in cases.items():
+        root_application_path = project_root / "demo-data" / "inputs" / f"{stem}.application.json"
+        public_application_path = (
+            project_root / "frontend" / "public" / "demo-data" / "inputs" / f"{stem}.application.json"
+        )
+        assert json.loads(root_application_path.read_text()) == json.loads(
+            public_application_path.read_text()
+        )
+        application_payload = json.loads(root_application_path.read_text())["application_data"]
+        extraction_payload = json.loads(
+            (project_root / "backend" / "app" / "services" / "demo_extractions" / f"{stem}.json").read_text()
+        )
+
+        result = compare_label(
+            ApplicationData.model_validate(application_payload),
+            ExtractedLabel.model_validate(extraction_payload),
+        )
+
+        assert result.overall_verdict == verdict
+        assert {field.field for field in result.results if field.status == "FAIL"} == failed_fields
 
 
 def test_preprocess_rejects_unsupported_content_type() -> None:

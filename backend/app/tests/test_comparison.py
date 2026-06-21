@@ -117,6 +117,16 @@ def test_net_contents_normalization_converts_liters_to_ml() -> None:
     assert field_result.status == "PASS"
 
 
+def test_net_contents_normalization_matches_fluid_ounces() -> None:
+    field_result = result_for_field(
+        make_application(net_contents="12 fl oz"),
+        make_extracted(net_contents="12 fl oz"),
+        "net_contents",
+    )
+
+    assert field_result.status == "PASS"
+
+
 def test_country_synonym_normalization_matches_usa_to_united_states() -> None:
     field_result = result_for_field(
         make_application(country_of_origin="United States"),

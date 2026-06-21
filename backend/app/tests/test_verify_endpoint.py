@@ -68,8 +68,9 @@ def post_verify(
     image_bytes: bytes | None = None,
     filename: str = "label.png",
     content_type: str = "image/png",
+    use_real_vision: bool = True,
 ):
-    data = {}
+    data = {"use_real_vision": str(use_real_vision).lower()}
     if application_data is not None:
         data["application_data"] = (
             application_data if isinstance(application_data, str) else json.dumps(application_data)
@@ -358,6 +359,34 @@ def test_tests_use_fake_vision_service_without_api_key_or_network(monkeypatch) -
 
     assert response.status_code == 200
     assert len(fake_service.calls) == 1
+
+
+def test_demo_mode_uses_filename_keyed_pretend_extraction() -> None:
+    client, fake_service = make_client(
+        FakeVisionService(result=make_extracted_label(brand_name="SHOULD NOT BE USED"))
+    )
+
+    response = post_verify(
+        client,
+        application_data={
+            "brand_name": "EVERGREEN AMBER BOURBON",
+            "class_type": "Kentucky Straight Bourbon Whiskey",
+            "abv": "45% Alc./Vol. (90 Proof)",
+            "net_contents": "750 mL",
+            "producer": "Evergreen Spirits LLC, Louisville, KY",
+            "country_of_origin": "United States",
+            "government_warning": CANONICAL_GOVERNMENT_WARNING,
+        },
+        image_bytes=make_image_bytes(),
+        filename="evergreen-amber-bourbon.png",
+        use_real_vision=False,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["overall_verdict"] == "APPROVED"
+    brand = next(result for result in response.json()["results"] if result["field"] == "brand_name")
+    assert brand["found"] == "EVERGREEN AMBER BOURBON"
+    assert fake_service.calls == []
 
 
 def test_verify_logs_request_timing_without_payload_contents(caplog) -> None:

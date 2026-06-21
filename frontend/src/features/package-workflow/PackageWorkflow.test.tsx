@@ -614,7 +614,30 @@ describe("PackageWorkflow", () => {
     expect(JSON.parse(String(readFormDataBody().get("application_data")))).toEqual(
       canonicalApplicationData
     );
+    expect(readFormDataBody().get("use_real_vision")).toBe("false");
     expect(container.textContent).toContain("Passed");
+  });
+
+  it("sends the real vision flag when OpenAI key mode is enabled", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => verificationResult()
+      })
+    );
+
+    await renderPackageWorkflow();
+    await act(async () => {
+      const checkbox = container.querySelector('input[type="checkbox"]');
+      if (!(checkbox instanceof HTMLInputElement)) {
+        throw new Error("Missing OpenAI checkbox");
+      }
+      checkbox.click();
+    });
+    await chooseFiles([jsonFile("application.json", "label.png"), imageFile("label.png")]);
+
+    expect(readFormDataBody().get("use_real_vision")).toBe("true");
   });
 
   it("calls /verify/batch automatically for multiple applications and maps index results by record", async () => {
@@ -671,6 +694,7 @@ describe("PackageWorkflow", () => {
     const formData = readFormDataBody();
     expect((formData.getAll("images")[0] as File).name).toBe("first.png");
     expect((formData.getAll("images")[1] as File).name).toBe("second.png");
+    expect(formData.get("use_real_vision")).toBe("false");
 
     const firstCard = container.textContent ?? "";
     expect(firstCard).toContain("FIRST BRAND");

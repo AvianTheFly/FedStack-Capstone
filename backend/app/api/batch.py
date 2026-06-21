@@ -10,6 +10,7 @@ from app.api.dependencies import get_vision_service
 from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.domain.models import ApplicationData, BatchResult
+from app.services.fake_vision import DemoVisionService
 from app.services.batch import (
     BatchVerificationInput,
     bad_request_item_error,
@@ -28,6 +29,7 @@ router = APIRouter(tags=["verification"])
 async def verify_batch(
     images: Annotated[list[UploadFile] | None, File()] = None,
     application_data: Annotated[list[str] | None, Form()] = None,
+    use_real_vision: Annotated[bool, Form()] = False,
     vision_service: Annotated[VisionService, Depends(get_vision_service)] = None,
 ) -> BatchResult:
     start = perf_counter()
@@ -64,7 +66,7 @@ async def verify_batch(
 
     result = await process_batch_items(
         items=items,
-        vision_service=vision_service,
+        vision_service=vision_service if use_real_vision else DemoVisionService(),
         settings=settings,
     )
     latency_ms = elapsed_ms(start)

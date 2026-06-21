@@ -18,6 +18,7 @@ Inputs:
 
 - Multipart `image`.
 - Multipart `application_data` JSON string using canonical fields.
+- Optional multipart `use_real_vision` boolean string; false or omitted uses deterministic demo extraction fixtures, true uses the configured vision provider.
 
 Outputs:
 

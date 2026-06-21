@@ -38,6 +38,7 @@ Request: `multipart/form-data`
 
 - `image`: label image file.
 - `application_data`: JSON string containing the canonical fields.
+- `use_real_vision`: optional boolean string. `false` or omitted uses deterministic demo extraction fixtures; `true` uses the configured vision provider.
 
 Success response:
 
@@ -145,6 +146,7 @@ Request: `multipart/form-data`
 
 - `images`: repeated label image file parts.
 - `application_data`: repeated JSON string parts containing the canonical fields.
+- `use_real_vision`: optional boolean string. `false` or omitted uses deterministic demo extraction fixtures; `true` uses the configured vision provider.
 
 Pairing rule:
 

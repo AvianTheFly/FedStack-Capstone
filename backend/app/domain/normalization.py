@@ -2,12 +2,13 @@ import re
 
 ABV_TOLERANCE = 0.1
 NET_CONTENTS_TOLERANCE_ML = 1.0
+US_FLUID_OUNCE_ML = 29.5735295625
 
 _NON_ALPHANUMERIC_RE = re.compile(r"[^a-z0-9]+")
 _PERCENT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%")
 _PROOF_RE = re.compile(r"(\d+(?:\.\d+)?)\s*proof", re.IGNORECASE)
 _NET_CONTENTS_RE = re.compile(
-    r"(?P<amount>\d+(?:\.\d+)?)\s*(?P<unit>ml|milliliters?|l|liters?|cl|centiliters?)\b",
+    r"(?P<amount>\d+(?:\.\d+)?)\s*(?P<unit>fl\.?\s*oz\.?|fluid\s+ounces?|ml|milliliters?|l|liters?|cl|centiliters?)\b",
     re.IGNORECASE,
 )
 
@@ -62,5 +63,7 @@ def parse_net_contents_ml(value: str) -> float | None:
         return amount * 1000
     if unit in {"cl", "centiliter", "centiliters"}:
         return amount * 10
+    if unit.replace(".", "").replace(" ", "") in {"floz", "fluidounce", "fluidounces"}:
+        return amount * US_FLUID_OUNCE_ML
 
     return None

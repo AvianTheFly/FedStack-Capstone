@@ -390,7 +390,7 @@ export function PackageWorkflow() {
     try {
       if (validRecords.length === 1) {
         const record = validRecords[0];
-        const result = await verifyLabel(record.image_file, record.application_data);
+        const result = await verifyLabel(record.image_file, record.application_data, useOpenAiKey);
         updateRecordWithResult(record.package_id, result);
         return;
       }
@@ -399,7 +399,8 @@ export function PackageWorkflow() {
         validRecords.map((record) => ({
           image: record.image_file,
           application_data: record.application_data
-        }))
+        })),
+        useOpenAiKey
       );
 
       setRecords((current) =>

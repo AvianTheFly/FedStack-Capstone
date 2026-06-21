@@ -117,11 +117,13 @@ async function requestVerification<T>(path: string, init: RequestInit): Promise<
 
 export async function verifyLabel(
   image: File,
-  applicationData: ApplicationData
+  applicationData: ApplicationData,
+  useRealVision = false
 ): Promise<VerificationResult> {
   const formData = new FormData();
   formData.append("image", image);
   formData.append("application_data", JSON.stringify(applicationData));
+  formData.append("use_real_vision", String(useRealVision));
 
   return requestVerification<VerificationResult>("/verify", {
       method: "POST",
@@ -129,12 +131,16 @@ export async function verifyLabel(
   });
 }
 
-export async function verifyBatch(items: BatchVerificationRequestItem[]): Promise<BatchResult> {
+export async function verifyBatch(
+  items: BatchVerificationRequestItem[],
+  useRealVision = false
+): Promise<BatchResult> {
   const formData = new FormData();
   for (const item of items) {
     formData.append("images", item.image);
     formData.append("application_data", JSON.stringify(item.application_data));
   }
+  formData.append("use_real_vision", String(useRealVision));
 
   return requestVerification<BatchResult>("/verify/batch", {
       method: "POST",

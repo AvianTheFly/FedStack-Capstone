@@ -10,6 +10,7 @@ from app.api.dependencies import get_vision_service
 from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.domain.models import ApplicationData, VerificationResult
+from app.services.fake_vision import DemoVisionService
 from app.services.image_preprocess import ImagePreprocessError
 from app.services.verification import elapsed_ms, verify_label_image
 from app.services.vision import VisionService, VisionServiceError
@@ -22,6 +23,7 @@ router = APIRouter(tags=["verification"])
 async def verify_label(
     image: Annotated[UploadFile | None, File()] = None,
     application_data: Annotated[str | None, Form()] = None,
+    use_real_vision: Annotated[bool, Form()] = False,
     vision_service: Annotated[VisionService, Depends(get_vision_service)] = None,
 ) -> VerificationResult:
     start = perf_counter()
@@ -34,7 +36,7 @@ async def verify_label(
             image_bytes=image_bytes,
             content_type=image.content_type or "",
             filename=image.filename,
-            vision_service=vision_service,
+            vision_service=vision_service if use_real_vision else DemoVisionService(),
             settings=settings,
         )
         logger.info(
