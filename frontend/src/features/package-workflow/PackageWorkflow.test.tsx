@@ -377,6 +377,8 @@ describe("PackageWorkflow", () => {
     expect(container.textContent).toContain("Use OPENAI KEY");
     expect(container.textContent).toContain("Submit");
     expect(container.textContent).toContain("Applications");
+    expect(container.textContent).toContain("Incomplete Applications");
+    expect(container.textContent).toContain("No Incomplete Applications");
     expect(container.textContent).not.toContain("Check Applications");
     expect(container.textContent).not.toContain("Single Label");
     expect(container.textContent).not.toContain("Batch Upload");
@@ -396,6 +398,25 @@ describe("PackageWorkflow", () => {
     expect(container.textContent).toContain("WARNING: THIS USES REAL API CALLS");
     expect(container.textContent).toContain("API Key");
     expect(container.textContent).toContain("Model");
+  });
+
+  it("downloads demo inputs as one archive", async () => {
+    const anchors: HTMLAnchorElement[] = [];
+    const originalCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation(((tagName: string, options?: ElementCreationOptions) => {
+      const element = originalCreateElement(tagName, options);
+      if (tagName.toLowerCase() === "a") {
+        anchors.push(element as HTMLAnchorElement);
+      }
+      return element;
+    }) as typeof document.createElement);
+
+    await renderPackageWorkflow();
+    await clickButton("Download Demo Data");
+
+    expect(anchors).toHaveLength(1);
+    expect(anchors[0].download).toBe("demo-inputs.zip");
+    expect(anchors[0].href).toContain("/demo-data/demo-inputs.zip");
   });
 
   it("adds later uploads to the current batch instead of replacing them", async () => {
@@ -451,6 +472,125 @@ describe("PackageWorkflow", () => {
       body: expect.any(FormData),
       signal: expect.any(AbortSignal)
     });
+  });
+
+  it("filters applications and updates section counts from search text", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          summary: { passed: 2, needs_review: 0, total: 2 },
+          items: [
+            { index: 0, result: verificationResult(), error: null },
+            { index: 1, result: verificationResult(), error: null }
+          ]
+        })
+      })
+    );
+
+    await renderPackageWorkflow();
+    await chooseFiles([
+      jsonFile("first.json", "first.png"),
+      imageFile("first.png"),
+      jsonFile("second.json", "second.png", {
+        ...canonicalApplicationData,
+        brand_name: "SECOND BRAND"
+      }),
+      imageFile("second.png"),
+      jsonFile("waiting.json", "missing.png")
+    ]);
+
+    await act(async () => {
+      const search = container.querySelector('input[type="search"]');
+      if (!(search instanceof HTMLInputElement)) {
+        throw new Error("Missing search field");
+      }
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      valueSetter?.call(search, "second");
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await waitForAsyncUpdates();
+
+    expect(container.textContent).toContain("SECOND BRAND");
+    expect(container.textContent).not.toContain("OLD TOM DISTILLERY");
+    expect(container.textContent).toContain("1 total");
+    expect(container.textContent).toContain("No Matching Incomplete Applications");
+  });
+
+  it("uses incomplete header count buttons as filters", async () => {
+    await renderPackageWorkflow();
+    await chooseFiles([jsonFile("waiting.json", "missing.png"), imageFile("lonely.png")]);
+
+    expect(container.textContent).toContain("2 total");
+    expect(container.textContent).toContain("1 json");
+    expect(container.textContent).toContain("1 images");
+
+    await clickButton("1 images");
+
+    expect(container.textContent).toContain("2 total");
+    expect(container.textContent).toContain("1 json");
+    expect(buttonWithText("2 total").getAttribute("aria-pressed")).toBe("false");
+    expect(buttonWithText("1 json").getAttribute("aria-pressed")).toBe("false");
+    expect(buttonWithText("1 images").getAttribute("aria-pressed")).toBe("true");
+    expect(container.textContent).not.toContain("waiting.json is waiting for missing.png.");
+    expect(container.textContent).toContain("lonely.png is waiting for a matching application JSON file.");
+  });
+
+  it("expands advanced search and refines by alcohol content", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          summary: { passed: 2, needs_review: 0, total: 2 },
+          items: [
+            { index: 0, result: verificationResult(), error: null },
+            { index: 1, result: verificationResult(), error: null }
+          ]
+        })
+      })
+    );
+
+    await renderPackageWorkflow();
+    await chooseFiles([
+      jsonFile("lower.json", "lower.png", {
+        ...canonicalApplicationData,
+        abv: "12.5%",
+        brand_name: "LOWER ABV"
+      }),
+      imageFile("lower.png"),
+      jsonFile("higher.json", "higher.png", {
+        ...canonicalApplicationData,
+        abv: "45%",
+        brand_name: "HIGHER ABV"
+      }),
+      imageFile("higher.png")
+    ]);
+
+    await clickButton("Advanced Search");
+
+    await act(async () => {
+      const abvLabel = Array.from(container.querySelectorAll("label")).find((label) =>
+        label.textContent?.includes("Alcohol Content")
+      );
+      const operator = abvLabel?.querySelector("select");
+      const value = abvLabel?.querySelector("input");
+      if (!(operator instanceof HTMLSelectElement) || !(value instanceof HTMLInputElement)) {
+        throw new Error("Missing ABV filters");
+      }
+      const operatorSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      operatorSetter?.call(operator, "gt");
+      operator.dispatchEvent(new Event("change", { bubbles: true }));
+      valueSetter?.call(value, "20");
+      value.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await waitForAsyncUpdates();
+
+    expect(container.textContent).toContain("HIGHER ABV");
+    expect(container.textContent).not.toContain("LOWER ABV");
+    expect(container.textContent).toContain("1 total");
   });
 
   it("calls /verify automatically when one application is uploaded", async () => {
@@ -573,6 +713,248 @@ describe("PackageWorkflow", () => {
     expect(container.querySelector('[aria-label="Fail Brand Name"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="Needs review Brand Name"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="Pass Brand Name"]')).not.toBeNull();
+  });
+
+  it("filters detail data fields from the data header count buttons", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () =>
+          verificationResult({
+            overall_verdict: "NEEDS_REVIEW",
+            results: [
+              {
+                field: "brand_name",
+                match_type: "fuzzy",
+                expected: "OLD TOM DISTILLERY",
+                found: "WRONG BRAND",
+                status: "FAIL",
+                message: "Values do not match after fuzzy normalization."
+              },
+              ...verificationResult().results.slice(1)
+            ]
+          })
+      })
+    );
+
+    await renderPackageWorkflow();
+    await chooseFiles([jsonFile("application.json", "label.png"), imageFile("label.png")]);
+    await act(async () => {
+      firstPackageButton().click();
+    });
+
+    const dataPanel = container.querySelector(".data-panel");
+    if (!(dataPanel instanceof HTMLElement)) {
+      throw new Error("Missing data panel");
+    }
+
+    expect(dataPanel.textContent).toContain("7 total");
+    expect(dataPanel.textContent).toContain("0 fail");
+    expect(dataPanel.textContent).toContain("1 needs review");
+    expect(dataPanel.textContent).toContain("6 passed");
+
+    const reviewFilter = Array.from(dataPanel.querySelectorAll("button")).find(
+      (button) => button.textContent === "1 needs review"
+    );
+    if (!(reviewFilter instanceof HTMLButtonElement)) {
+      throw new Error("Missing review field filter");
+    }
+
+    await act(async () => {
+      reviewFilter.click();
+    });
+    await waitForAsyncUpdates();
+
+    expect(reviewFilter.getAttribute("aria-pressed")).toBe("true");
+    expect(dataPanel.textContent).toContain("Brand Name");
+    expect(dataPanel.textContent).not.toContain("Class Type");
+  });
+
+  it("shows a magnified label pane that can freeze, reset, and rotate with the image", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => verificationResult()
+      })
+    );
+
+    await renderPackageWorkflow();
+    await chooseFiles([jsonFile("application.json", "label.png"), imageFile("label.png")]);
+    await act(async () => {
+      firstPackageButton().click();
+    });
+
+    const imageFrame = container.querySelector(".detail-image-frame");
+    const zoomPane = container.querySelector(".detail-zoom-pane");
+    if (!(imageFrame instanceof HTMLDivElement) || !(zoomPane instanceof HTMLDivElement)) {
+      throw new Error("Missing zoomable label image");
+    }
+    const labelImage = imageFrame.querySelector("img");
+    const zoomImage = zoomPane.querySelector("img");
+    if (!(labelImage instanceof HTMLImageElement) || !(zoomImage instanceof HTMLImageElement)) {
+      throw new Error("Missing zoom images");
+    }
+
+    vi.spyOn(imageFrame, "getBoundingClientRect").mockReturnValue({
+      bottom: 400,
+      height: 400,
+      left: 10,
+      right: 210,
+      top: 0,
+      width: 200,
+      x: 10,
+      y: 0,
+      toJSON: () => ({})
+    });
+    vi.spyOn(labelImage, "getBoundingClientRect").mockReturnValue({
+      bottom: 360,
+      height: 320,
+      left: 30,
+      right: 190,
+      top: 40,
+      width: 160,
+      x: 30,
+      y: 40,
+      toJSON: () => ({})
+    });
+    vi.spyOn(zoomPane, "getBoundingClientRect").mockReturnValue({
+      bottom: 540,
+      height: 100,
+      left: 10,
+      right: 210,
+      top: 440,
+      width: 200,
+      x: 10,
+      y: 440,
+      toJSON: () => ({})
+    });
+
+    await act(async () => {
+      imageFrame.dispatchEvent(
+        new MouseEvent("pointermove", {
+          bubbles: true,
+          clientX: 160,
+          clientY: 300
+        })
+      );
+    });
+
+    expect(zoomPane.getAttribute("aria-label")).toBe("Magnified label image");
+    expect(zoomPane.classList.contains("detail-zoom-pane--active")).toBe(true);
+    expect((labelImage as HTMLElement).style.width).toBe("200px");
+    expect((labelImage as HTMLElement).style.height).toBe("200px");
+    expect((labelImage as HTMLElement).style.top).toBe("100px");
+    expect((zoomImage as HTMLElement).style.left).toBe("-50px");
+    expect((zoomImage as HTMLElement).style.top).toBe("-150px");
+    expect((zoomImage as HTMLElement).style.transformOrigin).toBe("150px 200px");
+    expect((zoomImage as HTMLElement).style.transform).toContain("scale(4.3)");
+    const lens = imageFrame.querySelector(".detail-image-frame__lens");
+    expect((lens as HTMLElement).style.width).toBe("72px");
+    expect((lens as HTMLElement).style.height).toBe("42px");
+    expect(lens?.textContent).toBe("");
+    expect(container.textContent).toContain("Click to Lock");
+    expect(container.textContent).toContain("Drag to move image");
+
+    await act(async () => {
+      imageFrame.dispatchEvent(
+        new MouseEvent("pointerdown", {
+          bubbles: true,
+          clientX: 160,
+          clientY: 300
+        })
+      );
+      imageFrame.dispatchEvent(
+        new MouseEvent("pointerup", {
+          bubbles: true,
+          clientX: 160,
+          clientY: 300
+        })
+      );
+      imageFrame.dispatchEvent(
+        new MouseEvent("pointermove", {
+          bubbles: true,
+          clientX: 60,
+          clientY: 100
+        })
+      );
+    });
+
+    expect(imageFrame.classList.contains("detail-image-frame--frozen")).toBe(true);
+    expect((zoomImage as HTMLElement).style.left).toBe("-50px");
+    expect((zoomImage as HTMLElement).style.top).toBe("-150px");
+    expect(container.textContent).not.toContain("Click to Lock");
+
+    await act(async () => {
+      imageFrame.dispatchEvent(new MouseEvent("pointerout", { bubbles: true }));
+      imageFrame.dispatchEvent(
+        new MouseEvent("pointermove", {
+          bubbles: true,
+          clientX: 60,
+          clientY: 100
+        })
+      );
+    });
+
+    expect(imageFrame.classList.contains("detail-image-frame--frozen")).toBe(true);
+    expect((zoomImage as HTMLElement).style.left).toBe("-50px");
+    expect((zoomImage as HTMLElement).style.top).toBe("-150px");
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MouseEvent("pointermove", {
+          bubbles: true,
+          clientX: 229,
+          clientY: 419
+        })
+      );
+      window.dispatchEvent(
+        new MouseEvent("pointermove", {
+          bubbles: true,
+          clientX: 60,
+          clientY: 100
+        })
+      );
+    });
+
+    expect(imageFrame.classList.contains("detail-image-frame--frozen")).toBe(false);
+    expect((zoomImage as HTMLElement).style.left).toBe("50px");
+    expect((zoomImage as HTMLElement).style.top).toBe("50px");
+    expect((zoomImage as HTMLElement).style.transformOrigin).toBe("50px 0px");
+
+    await act(async () => {
+      buttonWithLabel("Rotate image right").click();
+    });
+
+    expect((labelImage as HTMLElement).style.transform).toBe("translate(0px, 0px) rotate(5deg)");
+    expect((zoomImage as HTMLElement).style.transform).toContain("rotate(5deg)");
+
+    await act(async () => {
+      imageFrame.dispatchEvent(
+        new MouseEvent("pointerdown", {
+          bubbles: true,
+          clientX: 100,
+          clientY: 200
+        })
+      );
+      imageFrame.dispatchEvent(
+        new MouseEvent("pointermove", {
+          bubbles: true,
+          clientX: 300,
+          clientY: 200
+        })
+      );
+      imageFrame.dispatchEvent(
+        new MouseEvent("pointerup", {
+          bubbles: true,
+          clientX: 300,
+          clientY: 200
+        })
+      );
+    });
+
+    expect((labelImage as HTMLElement).style.transform).toMatch(/translate\(\d+(\.\d+)?px, 0px\) rotate\(5deg\)/);
   });
 
   it("uses backend field results to enable review decision buttons", async () => {
