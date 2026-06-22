@@ -31,15 +31,7 @@ Submission status:
 
 ## Live Demo
 
-Live demo verification is pending because deployed URLs were not available during the final audit.
-Before submission, update this section with:
-
-- Frontend: deployed frontend URL
-- Backend health: deployed backend `/health` URL
-- Verification status: package upload, single-package check, multi-package check, edited extracted
-  text recheck, export, warning exact-match, imperfect-image, and browser CORS results
-
-Do not mark these as passed until they have actually been tested.
+Free-tier cloud link (Please give it a minute to cold start the backend service): https://fed-stack-capstone.vercel.app/
 
 ## Features
 
